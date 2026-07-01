@@ -12,10 +12,6 @@
       "destination": "/api/pms-api/[...path]"
     },
     {
-      "source": "/pms-api/(.*)",
-      "destination": "/api/pms-api/$1"
-    },
-    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

@@ -5,7 +5,7 @@ const pmsProxyBaseUrl = process.env.PMS_PROXY_BASE_URL || "http://localhost:8086
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
     const requestUrl = new URL(req.url || "/", "https://pms-mock.local");
-    const pmsPath = requestUrl.pathname.replace(/^\/api\/pms-api/, "") || "/";
+    const pmsPath = requestUrl.pathname.replace(/^\/(?:api\/)?pms-api/, "") || "/";
     const targetUrl = new URL(`${pmsProxyBaseUrl}${pmsPath}${requestUrl.search}`);
     const body = ["GET", "HEAD"].includes(req.method || "GET") ? undefined : await readRawBody(req);
     const response = await fetch(targetUrl, {

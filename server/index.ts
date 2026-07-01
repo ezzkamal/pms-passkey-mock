@@ -54,12 +54,14 @@ app.get("/api/dev/pms-access-token", async (_req, res) => {
     res.status(500).json({ message: error instanceof Error ? error.message : "Failed to get stored PMS access token" });
   }
 });
+app.use(["/api/pms-api", "/pms-api"], pmsProxy);
 app.use("/api", (_req, res) => {
   res.status(404).json({ message: "Unknown pms-mock API route." });
 });
-app.use("/pms-api", async (req, res) => {
+
+async function pmsProxy(req: express.Request, res: express.Response) {
   try {
-    const targetUrl = new URL(`${pmsProxyBaseUrl}${req.originalUrl.replace(/^\/pms-api/, "")}`);
+    const targetUrl = new URL(`${pmsProxyBaseUrl}${req.originalUrl.replace(/^\/(?:api\/)?pms-api/, "")}`);
     const body = ["GET", "HEAD"].includes(req.method) ? undefined : await readRawBody(req);
     const response = await fetch(targetUrl, {
       method: req.method,
@@ -77,7 +79,7 @@ app.use("/pms-api", async (req, res) => {
   } catch (error) {
     res.status(502).json({ message: error instanceof Error ? error.message : "PMS proxy request failed" });
   }
-});
+}
 
 const vite = await createViteServer({
   server: {
