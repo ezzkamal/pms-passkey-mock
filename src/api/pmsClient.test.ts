@@ -44,6 +44,21 @@ describe("pmsClient", () => {
     );
   });
 
+  it("supports point-in-time salary lookups via asOf", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "rec-1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await pmsClient.getSalary("emp-1", config, "2026-06-01");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8086/api/salaries/emp-1?asOf=2026-06-01",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ "X-Key-Grant-Token": "grant-token" }),
+      }),
+    );
+  });
+
   it("requests a preferred passkey registration mode", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ceremonyId: "ceremony-1", publicKey: {} }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

@@ -1,6 +1,6 @@
-export type Section = "passkeys" | "payroll-runs" | "salaries" | "approvals" | "audit";
+export type Section = "passkeys" | "approvals" | "salaries" | "payroll-runs" | "audit";
 
-export type PayrollRunStatus = "DRAFT" | "OPEN" | "LOCKED" | "APPROVED" | "IN_PROGRESS";
+export type PayrollRunStatus = "DRAFT" | "OPEN" | "LOCKED";
 
 export type PayrollRun = {
   id: string;
@@ -14,13 +14,24 @@ export type PayrollRun = {
   createdAt: string;
 };
 
+export type PayrollRunStatusTransition = {
+  id: string;
+  runId: string;
+  fromStatus: PayrollRunStatus | null;
+  toStatus: PayrollRunStatus;
+  changedBy: string;
+  changedAt: string;
+};
+
+export type SalaryRecordSource = "MANUAL" | "IMPORT" | "CORRECTION";
+
 export type SalaryRecord = {
   id: string;
   employeeExternalId: string;
   netBaseSalary: number;
   effectiveFrom: string;
   effectiveTo: string | null;
-  source: "MANUAL" | "IMPORT" | "SYSTEM";
+  source: SalaryRecordSource;
   createdBy?: string | null;
   createdAt: string;
 };
@@ -50,3 +61,26 @@ export type KeyApprovalResponse = {
   approvedAt: string | null;
   createdAt: string | null;
 };
+
+export type AuditRecord = {
+  id: string;
+  entity: string;
+  entityId: string;
+  field: string;
+  action: "CREATE" | "DECRYPT" | "CORRECT";
+  status: "SUCCESS" | "DENIED";
+  author: string;
+  createdAt: string;
+};
+
+export type PagedResponse<T> = {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+};
+
+export type ApprovalState = "unknown" | "pending" | "approved";

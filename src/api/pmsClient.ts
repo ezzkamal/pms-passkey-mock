@@ -1,11 +1,16 @@
 import type {
+  AuditRecord,
   KeyApprovalResponse,
   KeyGrantResponse,
+  PagedResponse,
   PasskeyOptionsResponse,
   PasskeyRegistrationMode,
   PasskeyStatusResponse,
   PayrollRun,
+  PayrollRunStatus,
+  PayrollRunStatusTransition,
   SalaryRecord,
+  SalaryRecordSource,
 } from "../types";
 
 type HttpMethod = "GET" | "POST" | "PATCH";
@@ -14,6 +19,7 @@ export type PmsClientConfig = {
   baseUrl: string;
   authToken: string;
   keyGrantToken: string;
+  keyGrantExpiresAt?: string;
 };
 
 const STORAGE_KEY = "pms-mock-api-config";
@@ -22,6 +28,7 @@ export const defaultClientConfig: PmsClientConfig = {
   baseUrl: import.meta.env.VITE_PMS_API_BASE_URL || "http://localhost:8086/api",
   authToken: "",
   keyGrantToken: import.meta.env.VITE_PMS_KEY_GRANT_TOKEN || "",
+  keyGrantExpiresAt: "",
 };
 
 export function loadClientConfig(): PmsClientConfig {
@@ -40,10 +47,12 @@ export function loadClientConfig(): PmsClientConfig {
 
   try {
     const parsed = JSON.parse(saved) as Partial<PmsClientConfig>;
+    // Key grants live ~10 minutes server-side; drop stale tokens instead of pretending they still work.
+    const grantExpired = parsed.keyGrantExpiresAt ? Date.parse(parsed.keyGrantExpiresAt) <= Date.now() : false;
     return {
       ...defaultClientConfig,
-      baseUrl: parsed.baseUrl || defaultClientConfig.baseUrl,
-      keyGrantToken: parsed.keyGrantToken || defaultClientConfig.keyGrantToken,
+      keyGrantToken: grantExpired ? "" : parsed.keyGrantToken || defaultClientConfig.keyGrantToken,
+      keyGrantExpiresAt: grantExpired ? "" : parsed.keyGrantExpiresAt || "",
       authToken: "",
     };
   } catch {
@@ -56,8 +65,8 @@ export function saveClientConfig(config: PmsClientConfig) {
   window.localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
-      baseUrl: config.baseUrl,
       keyGrantToken: config.keyGrantToken,
+      keyGrantExpiresAt: config.keyGrantExpiresAt || "",
     }),
   );
 }
@@ -135,22 +144,24 @@ export const pmsClient = {
   listPayrollRuns(config?: PmsClientConfig) {
     return request<PayrollRun[]>("/payroll-runs", "GET", undefined, false, config);
   },
-  createPayrollRun(payload: { year: number; month: number; status: "DRAFT" | "OPEN" | "LOCKED" }, config?: PmsClientConfig) {
+  // PMS rejects direct creation in OPEN; LOCKED is only for importing historical periods.
+  createPayrollRun(payload: { year: number; month: number; status: "DRAFT" | "LOCKED" }, config?: PmsClientConfig) {
     return request<PayrollRun>("/payroll-runs", "POST", payload, false, config);
   },
-  transitionPayrollRun(id: string, status: "DRAFT" | "OPEN" | "LOCKED", config?: PmsClientConfig) {
+  transitionPayrollRun(id: string, status: PayrollRunStatus, config?: PmsClientConfig) {
     return request<PayrollRun>(`/payroll-runs/${id}/status`, "PATCH", { status }, false, config);
   },
   updatePayrollRunPeriod(id: string, periodStart: string, periodEnd: string, config?: PmsClientConfig) {
     return request<PayrollRun>(`/payroll-runs/${id}/period`, "PATCH", { periodStart, periodEnd }, false, config);
   },
   getPayrollRunTransitions(id: string, config?: PmsClientConfig) {
-    return request(`/payroll-runs/${id}/transitions`, "GET", undefined, false, config);
+    return request<PayrollRunStatusTransition[]>(`/payroll-runs/${id}/transitions`, "GET", undefined, false, config);
   },
-  getSalary(employeeExternalId: string, config?: PmsClientConfig) {
-    return request<SalaryRecord>(`/salaries/${employeeExternalId}`, "GET", undefined, true, config);
+  getSalary(employeeExternalId: string, config?: PmsClientConfig, asOf?: string) {
+    const query = asOf ? `?asOf=${encodeURIComponent(asOf)}` : "";
+    return request<SalaryRecord>(`/salaries/${employeeExternalId}${query}`, "GET", undefined, true, config);
   },
-  createSalary(payload: { employeeExternalId: string; netBaseSalary: number; effectiveFrom: string; source?: "MANUAL" | "IMPORT" | "SYSTEM" }, config?: PmsClientConfig) {
+  createSalary(payload: { employeeExternalId: string; netBaseSalary: number; effectiveFrom: string; source?: SalaryRecordSource }, config?: PmsClientConfig) {
     return request<SalaryRecord>("/salaries", "POST", payload, true, config);
   },
   getSalaryHistory(employeeExternalId: string, config?: PmsClientConfig) {
@@ -162,10 +173,7 @@ export const pmsClient = {
   approveKey(credentialId: string, config?: PmsClientConfig) {
     return request<KeyApprovalResponse>("/key-approvals", "POST", { credentialId }, false, config);
   },
-  approveMockKeySelf(credentialId: string, config?: PmsClientConfig) {
-    return request<KeyApprovalResponse>("/mock/key-approvals/self", "POST", { credentialId }, false, config);
-  },
-  getAuditRecords(entity: string, entityId: string, config?: PmsClientConfig) {
-    return request(`/audit-records?entity=${encodeURIComponent(entity)}&entityId=${encodeURIComponent(entityId)}`, "GET", undefined, false, config);
+  getAuditRecords(entity: string, entityId: string, config?: PmsClientConfig, page = 0) {
+    return request<PagedResponse<AuditRecord>>(`/audit-records?entity=${encodeURIComponent(entity)}&entityId=${encodeURIComponent(entityId)}&page=${page}`, "GET", undefined, false, config);
   },
 };
