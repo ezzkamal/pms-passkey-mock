@@ -1,0 +1,47 @@
+{
+  "name": "pms-mock",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server/index.ts",
+    "dev:https-lab": "PORT=3443 VITE_HMR_PORT=24679 VITE_ALLOW_ALL_HOSTS=${VITE_ALLOW_ALL_HOSTS:-false} BETTER_AUTH_URL=https://pms-mock.127.0.0.1.sslip.io:3443 VITE_APP_ORIGIN=https://pms-mock.127.0.0.1.sslip.io:3443 VITE_DISABLE_CANONICAL_REDIRECT=true VITE_DEV_TOKEN_AUTH=true PMS_MOCK_DEV_TOKEN_AUTH=true VITE_PMS_API_BASE_URL=/pms-api PMS_PROXY_BASE_URL=${PMS_PROXY_BASE_URL:-http://localhost:18086/api} HTTPS_KEY_PATH=.cert/pms-mock-key.pem HTTPS_CERT_PATH=.cert/pms-mock-cert.pem tsx server/index.ts",
+    "dev:vite": "tsx server/index.ts",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "better-auth": "^1.6.23",
+    "better-sqlite3": "^12.11.1",
+    "chart.js": "^4.5.1",
+    "dotenv": "^17.4.2",
+    "express": "4",
+    "lucide-react": "^0.561.0",
+    "react": "^19.2.3",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^19.2.3",
+    "vite": "^8.0.9"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.10.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "^27.3.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.0.0"
+}

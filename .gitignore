@@ -1,0 +1,8 @@
+node_modules
+dist
+.data
+.cert
+test-results
+playwright-report
+tsconfig.tsbuildinfo
+.env
