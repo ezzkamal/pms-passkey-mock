@@ -17,7 +17,8 @@ type TokenResponse = {
   scope?: string;
 };
 
-const dbPath = resolve(process.cwd(), process.env.BETTER_AUTH_SQLITE_PATH || ".data/better-auth.sqlite");
+const defaultDbPath = process.env.VERCEL ? "/tmp/pms-mock-better-auth.sqlite" : ".data/better-auth.sqlite";
+const dbPath = resolve(process.cwd(), process.env.BETTER_AUTH_SQLITE_PATH || defaultDbPath);
 const keycloakClientId = process.env.AUTH_KEYCLOAK_ID || process.env.KEYCLOAK_CLIENT_ID || "";
 const keycloakClientSecret = process.env.AUTH_KEYCLOAK_SECRET || process.env.KEYCLOAK_CLIENT_SECRET || "";
 const keycloakIssuer = process.env.AUTH_KEYCLOAK_ISSUER || process.env.KEYCLOAK_ISSUER || "";

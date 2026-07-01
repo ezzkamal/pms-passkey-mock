@@ -5,7 +5,7 @@ import http from "node:http";
 import https from "node:https";
 import { createServer as createViteServer } from "vite";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
-import { auth, keycloakProviderId } from "./auth";
+import { auth, ensureAuthMigrations, keycloakProviderId } from "./auth";
 import { getLatestKeycloakAccessToken } from "./tokenStore";
 
 const port = Number(process.env.PORT || 3000);
@@ -19,8 +19,7 @@ const httpsCertPath = process.env.HTTPS_CERT_PATH;
 const pmsProxyBaseUrl = process.env.PMS_PROXY_BASE_URL || "http://localhost:8086/api";
 const devTokenAuthEnabled = process.env.PMS_MOCK_DEV_TOKEN_AUTH === "true";
 
-const authContext = await auth.$context;
-await authContext.runMigrations();
+await ensureAuthMigrations();
 
 const app = express();
 
