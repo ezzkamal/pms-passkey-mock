@@ -1,6 +1,6 @@
 import { toNodeHandler } from "better-auth/node";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { auth, ensureAuthMigrations } from "../../server/auth";
+import { auth, ensureAuthMigrations } from "../../server/auth.js";
 
 const authHandler = toNodeHandler(auth);
 

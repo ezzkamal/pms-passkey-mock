@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { getLatestKeycloakAccessToken } from "../../server/tokenStore";
+import { getLatestKeycloakAccessToken } from "../../server/tokenStore.js";
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== "GET") {

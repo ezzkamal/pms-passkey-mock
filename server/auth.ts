@@ -1,4 +1,4 @@
-import "./env";
+import "./env.js";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { betterAuth } from "better-auth";

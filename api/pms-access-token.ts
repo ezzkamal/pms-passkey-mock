@@ -1,6 +1,6 @@
 import { fromNodeHeaders } from "better-auth/node";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { auth, ensureAuthMigrations, keycloakProviderId } from "../server/auth";
+import { auth, ensureAuthMigrations, keycloakProviderId } from "../server/auth.js";
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== "GET") {

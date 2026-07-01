@@ -1,4 +1,4 @@
-import "./env";
+import "./env.js";
 import Database from "better-sqlite3";
 import { resolve } from "node:path";
 
