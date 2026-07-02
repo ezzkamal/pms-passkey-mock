@@ -70,6 +70,9 @@ async function pmsProxy(req: express.Request, res: express.Response) {
     });
 
     res.status(response.status);
+    if (req.header("x-key-grant-token")) {
+      res.setHeader("X-PMS-Mock-Forwarded-Key-Grant-Token", "true");
+    }
     response.headers.forEach((value, key) => {
       if (!["content-encoding", "content-length", "transfer-encoding"].includes(key.toLowerCase())) {
         res.setHeader(key, value);

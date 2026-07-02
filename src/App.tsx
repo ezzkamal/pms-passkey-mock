@@ -70,6 +70,10 @@ function saveLastSalaryEmployeeExternalId(employeeExternalId: string) {
   }
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
 function App() {
   const [section, setSection] = useState<Section>("passkeys");
   const [config, setConfig] = useState<PmsClientConfig>(() => loadClientConfig());
@@ -1018,7 +1022,7 @@ function AuditView({ config, target, onTarget }: { config: PmsClientConfig; targ
   async function loadAudit(nextPage = 0) {
     const entity = target.entity.trim();
     const entityId = target.entityId.trim();
-    if (!entity || !entityId) return;
+    if (!entity || !isUuid(entityId)) return;
 
     setError("");
     try {
@@ -1031,7 +1035,7 @@ function AuditView({ config, target, onTarget }: { config: PmsClientConfig; targ
   }
 
   useEffect(() => {
-    if (target.entityId) {
+    if (target.entity.trim() && isUuid(target.entityId)) {
       void loadAudit(0);
     }
   }, [target.entity, target.entityId]);
@@ -1056,7 +1060,7 @@ function AuditView({ config, target, onTarget }: { config: PmsClientConfig; targ
           Entity ID (UUID)
           <input value={target.entityId} onChange={(event) => onTarget({ ...target, entityId: event.target.value })} placeholder="salary record id" />
         </label>
-        <button className="btn primary inline-action" type="button" onClick={() => loadAudit(0)} disabled={!target.entity.trim() || !target.entityId.trim()}>
+        <button className="btn primary inline-action" type="button" onClick={() => loadAudit(0)} disabled={!target.entity.trim() || !isUuid(target.entityId)}>
           Load audit
         </button>
       </div>

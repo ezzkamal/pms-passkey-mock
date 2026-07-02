@@ -15,6 +15,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     });
 
     res.statusCode = response.status;
+    if (hasHeader(req.headers, "x-key-grant-token")) {
+      res.setHeader("X-PMS-Mock-Forwarded-Key-Grant-Token", "true");
+    }
     response.headers.forEach((value, key) => {
       if (!["content-encoding", "content-length", "transfer-encoding"].includes(key.toLowerCase())) {
         res.setHeader(key, value);
@@ -37,6 +40,11 @@ function proxyHeaders(headers: IncomingHttpHeaders): HeadersInit {
     }
   }
   return proxiedHeaders;
+}
+
+function hasHeader(headers: IncomingHttpHeaders, name: string): boolean {
+  const value = headers[name];
+  return Array.isArray(value) ? value.length > 0 : Boolean(value);
 }
 
 function readRawBody(req: IncomingMessage): Promise<Buffer> {
