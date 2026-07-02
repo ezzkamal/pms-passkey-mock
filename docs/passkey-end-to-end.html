@@ -1,0 +1,1235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PMS Passkey Flow - End to End</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f7f9;
+        --panel: #ffffff;
+        --ink: #152033;
+        --muted: #5f6e84;
+        --line: #d7dee8;
+        --soft-line: #e9eef4;
+        --blue: #2457d6;
+        --blue-soft: #eaf1ff;
+        --green: #087f5b;
+        --green-soft: #e7f7ef;
+        --amber: #946200;
+        --amber-soft: #fff5d8;
+        --red: #be2b2b;
+        --red-soft: #fff0ef;
+        --violet: #6846c6;
+        --violet-soft: #f0ecff;
+        --shadow: 0 10px 30px rgba(31, 45, 61, 0.08);
+        --radius: 8px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0) 380px),
+          var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.45;
+      }
+
+      a {
+        color: var(--blue);
+      }
+
+      code,
+      pre {
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      .page {
+        width: min(1320px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 32px 0 56px;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: 1.4fr 0.9fr;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 24px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--blue);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4 {
+        margin: 0;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        max-width: 820px;
+        font-size: clamp(32px, 5vw, 58px);
+        line-height: 1;
+      }
+
+      h2 {
+        font-size: 24px;
+      }
+
+      h3 {
+        font-size: 17px;
+      }
+
+      h4 {
+        font-size: 14px;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      .summary {
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .legend {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 38px;
+        padding: 9px 10px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--blue);
+        flex: 0 0 auto;
+      }
+
+      .dot.green {
+        background: var(--green);
+      }
+
+      .dot.amber {
+        background: var(--amber);
+      }
+
+      .dot.red {
+        background: var(--red);
+      }
+
+      .section {
+        margin-top: 24px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+
+      .panel.pad {
+        padding: 22px;
+      }
+
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: start;
+        margin-bottom: 16px;
+      }
+
+      .section-head p {
+        margin-top: 6px;
+        max-width: 820px;
+        color: var(--muted);
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: #f9fbfd;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .tag.blue {
+        color: var(--blue);
+        border-color: #c7d7ff;
+        background: var(--blue-soft);
+      }
+
+      .tag.green {
+        color: var(--green);
+        border-color: #bde8d2;
+        background: var(--green-soft);
+      }
+
+      .tag.amber {
+        color: var(--amber);
+        border-color: #ecd389;
+        background: var(--amber-soft);
+      }
+
+      .tag.red {
+        color: var(--red);
+        border-color: #f0b8b3;
+        background: var(--red-soft);
+      }
+
+      .flow-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .stage {
+        position: relative;
+        min-height: 178px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--panel);
+      }
+
+      .stage::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        right: -12px;
+        width: 12px;
+        height: 1px;
+        background: var(--line);
+      }
+
+      .stage:nth-child(4n)::after,
+      .stage:last-child::after {
+        display: none;
+      }
+
+      .stage .num {
+        display: inline-grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: var(--ink);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .stage h3 {
+        margin-top: 12px;
+      }
+
+      .stage p {
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .stage .route {
+        display: block;
+        margin-top: 12px;
+        padding: 8px;
+        border-radius: 6px;
+        background: #f7f9fc;
+        border: 1px solid var(--soft-line);
+        color: #24324a;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+
+      .lane {
+        display: grid;
+        grid-template-columns: 210px 1fr;
+        gap: 16px;
+        padding: 18px 0;
+        border-top: 1px solid var(--soft-line);
+      }
+
+      .lane:first-of-type {
+        border-top: 0;
+      }
+
+      .lane-title {
+        position: sticky;
+        top: 12px;
+        align-self: start;
+      }
+
+      .lane-title h3 {
+        margin-bottom: 6px;
+      }
+
+      .lane-title p {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .tree {
+        display: grid;
+        gap: 12px;
+      }
+
+      .node {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .node-main {
+        display: grid;
+        grid-template-columns: 168px 1fr;
+        gap: 14px;
+        padding: 14px;
+      }
+
+      .node-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      .node-main h4 {
+        margin-bottom: 5px;
+        font-size: 15px;
+      }
+
+      .node-main p {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .node-main ul {
+        margin: 8px 0 0;
+        padding-left: 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .node-main li + li {
+        margin-top: 4px;
+      }
+
+      .node .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 10px 14px;
+        border-top: 1px solid var(--soft-line);
+        background: #fbfcfe;
+      }
+
+      .mini {
+        padding: 4px 7px;
+        border-radius: 6px;
+        background: #eef2f7;
+        color: #3e5067;
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .mini.endpoint {
+        background: var(--blue-soft);
+        color: var(--blue);
+      }
+
+      .mini.crypto {
+        background: var(--violet-soft);
+        color: var(--violet);
+      }
+
+      .mini.db {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .mini.guard {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .matrix {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: var(--radius);
+        border: 1px solid var(--line);
+      }
+
+      .matrix th,
+      .matrix td {
+        padding: 12px 13px;
+        border-bottom: 1px solid var(--soft-line);
+        text-align: left;
+        vertical-align: top;
+        font-size: 14px;
+      }
+
+      .matrix th {
+        background: #f6f8fb;
+        color: #41516a;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .matrix tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .matrix code {
+        color: #1f3f8f;
+        font-size: 12px;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .card {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: #fff;
+      }
+
+      .card h3 {
+        margin-bottom: 8px;
+      }
+
+      .card p,
+      .card li {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .card ul {
+        margin: 8px 0 0;
+        padding-left: 18px;
+      }
+
+      .crypto-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .crypto-step {
+        display: grid;
+        grid-template-columns: 38px 1fr;
+        gap: 12px;
+        align-items: start;
+        padding: 14px;
+        border-radius: var(--radius);
+        border: 1px solid #ded6fb;
+        background: var(--violet-soft);
+      }
+
+      .crypto-step .idx {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        background: var(--violet);
+        color: #fff;
+        font-weight: 900;
+        font-size: 13px;
+      }
+
+      .crypto-step h3 {
+        margin-bottom: 5px;
+      }
+
+      .crypto-step p {
+        color: #534671;
+        font-size: 14px;
+      }
+
+      .callout {
+        padding: 14px 16px;
+        border-radius: var(--radius);
+        border: 1px solid #bdd7ff;
+        background: var(--blue-soft);
+        color: #234270;
+      }
+
+      .callout strong {
+        color: var(--ink);
+      }
+
+      details {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: #fff;
+      }
+
+      details + details {
+        margin-top: 10px;
+      }
+
+      summary {
+        cursor: pointer;
+        padding: 14px 16px;
+        font-weight: 850;
+      }
+
+      details .body {
+        padding: 0 16px 16px;
+        color: var(--muted);
+      }
+
+      pre {
+        margin: 10px 0 0;
+        padding: 12px;
+        overflow: auto;
+        border: 1px solid var(--soft-line);
+        border-radius: 6px;
+        background: #0f1724;
+        color: #eef5ff;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .source-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .source-grid code {
+        display: block;
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid var(--soft-line);
+        background: #f8fafc;
+        color: #334155;
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 1020px) {
+        header,
+        .lane,
+        .node-main {
+          grid-template-columns: 1fr;
+        }
+
+        .flow-grid,
+        .cards {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .stage::after {
+          display: none;
+        }
+
+        .lane-title {
+          position: static;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .page {
+          width: min(100% - 24px, 1320px);
+          padding-top: 18px;
+        }
+
+        .flow-grid,
+        .cards,
+        .legend,
+        .source-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .section-head {
+          display: block;
+        }
+
+        .matrix {
+          display: block;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <div>
+          <p class="eyebrow">IMS PMS Passkey Flow</p>
+          <h1>Passkeys, approvals, key grants, and salary decryption</h1>
+        </div>
+        <div class="summary">
+          This document maps the deployed mock and PMS backend from browser click to WebAuthn ceremony, PRF-backed key release, short-lived grant, salary encryption, and audit records. Generated from the current local source on 2026-07-02.
+        </div>
+      </header>
+
+      <section class="panel pad">
+        <div class="section-head">
+          <div>
+            <h2>Core Rule</h2>
+            <p>A normal JWT with the ADMIN role is not enough for salary data. PMS salary endpoints require a fresh passkey-derived key grant in <code>X-Key-Grant-Token</code>. Without it they return <code>403 Key grant is required</code>.</p>
+          </div>
+          <div class="tag-row">
+            <span class="tag blue">WebAuthn</span>
+            <span class="tag green">PRF</span>
+            <span class="tag amber">Dual control</span>
+            <span class="tag red">Grant gate</span>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><span class="dot"></span>Browser and mock client</div>
+          <div class="legend-item"><span class="dot green"></span>PMS service and database</div>
+          <div class="legend-item"><span class="dot amber"></span>Approval and policy gate</div>
+          <div class="legend-item"><span class="dot red"></span>Crypto and protected salary access</div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>End-to-End Path</h2>
+            <p>The happy path has four phases: enroll a passkey, approve it, authenticate it to mint a grant, then use that grant for salary endpoints.</p>
+          </div>
+        </div>
+        <div class="flow-grid">
+          <article class="stage">
+            <span class="num">1</span>
+            <h3>Register</h3>
+            <p>PMS starts a single-use WebAuthn registration ceremony with resident key, user verification, PRF enabled, and phone-first hints.</p>
+            <code class="route">POST /api/passkeys/registration/options</code>
+          </article>
+          <article class="stage">
+            <span class="num">2</span>
+            <h3>Verify</h3>
+            <p>Browser creates the credential. PMS verifies attestation and stores the public credential metadata. No salary key is released.</p>
+            <code class="route">POST /api/passkeys/registration/verify</code>
+          </article>
+          <article class="stage">
+            <span class="num">3</span>
+            <h3>Approve</h3>
+            <p>A different admin approves the credential. Future key release checks this approval every time.</p>
+            <code class="route">POST /api/key-approvals</code>
+          </article>
+          <article class="stage">
+            <span class="num">4</span>
+            <h3>Authenticate</h3>
+            <p>PMS requests a PRF evaluation. The authenticator signs the challenge and returns a PRF output that PMS uses to unwrap the salary DEK.</p>
+            <code class="route">POST /api/passkeys/authentication/verify</code>
+          </article>
+          <article class="stage">
+            <span class="num">5</span>
+            <h3>Grant</h3>
+            <p>PMS generates a random grant token, stores only its SHA-256 hash, and stores the salary DEK encrypted under a key derived from the grant token.</p>
+            <code class="route">KeyGrantResponse { token, expiresAt }</code>
+          </article>
+          <article class="stage">
+            <span class="num">6</span>
+            <h3>Salary Read</h3>
+            <p>The mock sends <code>X-Key-Grant-Token</code>. PMS validates ownership, expiry, revocation, and unwraps the DEK into a ThreadLocal for JPA converters.</p>
+            <code class="route">GET /api/salaries/{employeeExternalId}</code>
+          </article>
+          <article class="stage">
+            <span class="num">7</span>
+            <h3>Salary Write</h3>
+            <p>Create salary uses the same grant gate. Amounts are AES-GCM encrypted before they hit <code>salary_records.net_base_salary</code>.</p>
+            <code class="route">POST /api/salaries</code>
+          </article>
+          <article class="stage">
+            <span class="num">8</span>
+            <h3>Audit</h3>
+            <p>Successful decrypts, denied decrypts, and salary creates produce append-only audit rows. Amounts are never exposed by the audit endpoint.</p>
+            <code class="route">GET /api/audit-records?entity=salary&amp;entityId=...</code>
+          </article>
+        </div>
+      </section>
+
+      <section class="section panel pad">
+        <div class="section-head">
+          <div>
+            <h2>Endpoint Tree</h2>
+            <p>Each lane shows the UI call, PMS controller, service, entities, and important crypto or policy checks.</p>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title">
+            <h3>Registration</h3>
+            <p>Create a PRF-capable discoverable passkey, then store its public credential.</p>
+          </div>
+          <div class="tree">
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Mock UI</div>
+                <div>
+                  <h4><code>PasskeyView.registerPasskey()</code></h4>
+                  <p>Calls <code>pmsClient.startPasskeyRegistration(config, mode)</code>, then <code>createPasskeyCredential(options.publicKey)</code>, then <code>finishPasskeyRegistration(...)</code>.</p>
+                  <ul>
+                    <li>Default mode is <code>phone</code>.</li>
+                    <li><code>src/api/webauthn.ts</code> decodes base64url binary fields and PRF extension inputs before calling <code>navigator.credentials.create()</code>.</li>
+                    <li>Client forces a minimum WebAuthn timeout of 300000 ms.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">browser</span><span class="mini">src/App.tsx</span><span class="mini">src/api/webauthn.ts</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">PMS options</div>
+                <div>
+                  <h4><code>POST /passkeys/registration/options</code></h4>
+                  <p><code>PasskeyController.registrationOptions()</code> delegates to <code>PasskeyService.startRegistration(jwt, mode)</code>.</p>
+                  <ul>
+                    <li>Identity is extracted from JWT: <code>externalId</code> and <code>email</code>.</li>
+                    <li>Stale ceremonies older than 6 minutes are purged.</li>
+                    <li>Creates <code>PasskeyCeremony(type=REGISTRATION)</code> with Yubico request JSON.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">POST</span><span class="mini db">PasskeyCeremony</span><span class="mini">PasskeyService.startRegistration</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">WebAuthn options</div>
+                <div>
+                  <h4>Registration constraints</h4>
+                  <p>PMS asks for a discoverable, user-verified credential and enables PRF at registration.</p>
+                  <ul>
+                    <li><code>residentKey = REQUIRED</code></li>
+                    <li><code>userVerification = REQUIRED</code></li>
+                    <li><code>extensions.prf = enable()</code></li>
+                    <li><code>phone</code> or <code>hybrid</code> mode maps to <code>authenticatorAttachment = CROSS_PLATFORM</code> and hints <code>hybrid, security-key</code>.</li>
+                    <li>RP identity comes from <code>pms.passkey.rp-id</code>. In dev this is <code>pms-passkey-mock.vercel.app</code>.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini crypto">PRF enabled</span><span class="mini">WebAuthnConfig</span><span class="mini">PasskeyProperties</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">PMS verify</div>
+                <div>
+                  <h4><code>POST /passkeys/registration/verify</code></h4>
+                  <p><code>PasskeyService.finishRegistration()</code> consumes the single-use ceremony and calls Yubico <code>relyingParty.finishRegistration()</code>.</p>
+                  <ul>
+                    <li>Rejects identity mismatch, expired ceremony, malformed response, failed attestation, no UV, or no PRF support.</li>
+                    <li>Stores <code>PasskeyCredential</code>: credential ID, COSE public key, sign count, user handle, external ID, email, transports.</li>
+                    <li>No salary DEK, PRF secret, private key, or grant token is stored here.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">POST</span><span class="mini db">PasskeyCredential</span><span class="mini guard">requires ADMIN</span></div>
+            </article>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title">
+            <h3>Approval</h3>
+            <p>Second-admin approval gates future salary key release.</p>
+          </div>
+          <div class="tree">
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Pending</div>
+                <div>
+                  <h4><code>GET /key-approvals/pending</code></h4>
+                  <p><code>KeyApprovalService.pending()</code> lists active passkey credentials that do not have an active, non-revoked approval row.</p>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">GET</span><span class="mini db">PasskeyCredential</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Approve</div>
+                <div>
+                  <h4><code>POST /key-approvals</code></h4>
+                  <p><code>KeyApprovalService.approve(jwt, credentialId)</code> refuses self-approval by comparing the approver's JWT identity to the credential owner.</p>
+                  <ul>
+                    <li>Creates or reactivates <code>KeyApproval</code>.</li>
+                    <li>Stores <code>approvedBy</code> as the approver external ID and <code>approvedAt</code>.</li>
+                    <li>This approval is checked again during every key grant mint.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">POST</span><span class="mini db">KeyApproval</span><span class="mini guard">different admin</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Revoke or delete</div>
+                <div>
+                  <h4><code>DELETE /key-approvals/{credentialId}</code></h4>
+                  <p>If an active approval exists, PMS marks it inactive and sets <code>revokedAt</code>. If no approval exists, PMS deactivates the pending credential itself.</p>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">DELETE</span><span class="mini db">KeyApproval.active=false</span><span class="mini db">PasskeyCredential.active=false</span></div>
+            </article>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title">
+            <h3>Authentication</h3>
+            <p>Use the passkey PRF output to release a short-lived grant.</p>
+          </div>
+          <div class="tree">
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">PMS options</div>
+                <div>
+                  <h4><code>POST /passkeys/authentication/options</code></h4>
+                  <p><code>PasskeyService.startAuthentication()</code> requires an active credential for the JWT email, starts a WebAuthn assertion, and stores <code>PasskeyCeremony(type=AUTHENTICATION)</code>.</p>
+                  <ul>
+                    <li>Requires user verification.</li>
+                    <li>Requests PRF evaluation using salt <code>ims-salary-passkey-prf-v1</code>.</li>
+                    <li>Uses passkey hints from config or preferred mode order.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">POST</span><span class="mini crypto">PRF eval</span><span class="mini db">PasskeyCeremony</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Browser</div>
+                <div>
+                  <h4><code>navigator.credentials.get()</code></h4>
+                  <p>The browser/platform verifies the user locally and returns a WebAuthn assertion. <code>serializeCredential()</code> includes <code>clientExtensionResults</code>, where the PRF result is carried back to PMS.</p>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">browser</span><span class="mini crypto">signature</span><span class="mini crypto">PRF output</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">PMS verify</div>
+                <div>
+                  <h4><code>POST /passkeys/authentication/verify</code></h4>
+                  <p><code>PasskeyService.finishAuthentication()</code> consumes the ceremony and calls Yubico <code>relyingParty.finishAssertion()</code>.</p>
+                  <ul>
+                    <li>Rejects failed assertion, no UV, unknown credential, identity mismatch, or missing PRF output.</li>
+                    <li>Updates <code>PasskeyCredential.signCount</code>.</li>
+                    <li>Generates 32 random bytes, base64url encodes them as the grant token.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">POST</span><span class="mini db">PasskeyCredential</span><span class="mini crypto">SecureRandom</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Key grant</div>
+                <div>
+                  <h4><code>SalaryKeyService.wrapDekForGrantToken()</code></h4>
+                  <p>After active approval is confirmed, PMS obtains the salary DEK using the passkey PRF output, wraps it for this one grant token, and stores <code>KeyGrant</code>.</p>
+                  <ul>
+                    <li>Stored token value is <code>SHA-256(grantToken)</code> as hex.</li>
+                    <li>Stored <code>wrappedDek</code> is AES-GCM encrypted under a key derived from the grant token.</li>
+                    <li>Raw token returns once in <code>KeyGrantResponse</code>; the mock stores it in local storage until expiry.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini db">KeyGrant</span><span class="mini crypto">AES-GCM</span><span class="mini guard">approval required</span></div>
+            </article>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title">
+            <h3>Salary access</h3>
+            <p>Every protected salary read or write unwraps the grant and sets the salary DEK for the duration of the service call.</p>
+          </div>
+          <div class="tree">
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Mock proxy</div>
+                <div>
+                  <h4><code>pmsClient.getSalary()</code>, <code>createSalary()</code>, <code>getSalaryHistory()</code></h4>
+                  <p>These calls pass <code>includeKeyGrant=true</code>, so <code>buildHeaders()</code> adds <code>X-Key-Grant-Token</code>. The Vercel and local proxies forward only <code>authorization</code>, <code>content-type</code>, and <code>x-key-grant-token</code>.</p>
+                  <ul>
+                    <li>When the grant header is present, the proxy response adds <code>X-PMS-Mock-Forwarded-Key-Grant-Token: true</code> as a DevTools marker.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">mock</span><span class="mini">api/pms-api/[...path].ts</span><span class="mini">server/index.ts</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Controller</div>
+                <div>
+                  <h4><code>SalaryRecordController</code></h4>
+                  <p>Routes are ADMIN-only and then delegate to <code>SalaryRecordService</code> methods annotated with <code>@RequiresKeyGrant</code>.</p>
+                  <ul>
+                    <li><code>GET /salaries/{employeeExternalId}</code></li>
+                    <li><code>GET /salaries/{employeeExternalId}/history</code></li>
+                    <li><code>POST /salaries</code></li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">salary endpoints</span><span class="mini guard">@PreAuthorize ADMIN</span><span class="mini guard">@RequiresKeyGrant</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Aspect gate</div>
+                <div>
+                  <h4><code>KeyGrantAspect.enforceKeyGrant()</code></h4>
+                  <p><code>SalaryAccessGrantGuard.requireValidKeyGrant()</code> reads the JWT and <code>X-Key-Grant-Token</code>, then calls <code>PasskeyService.findValidKeyGrant(jwt, token)</code>.</p>
+                  <ul>
+                    <li>Rejects missing token, unknown hash, revoked grant, expired grant, external ID mismatch, or email mismatch.</li>
+                    <li>Unwraps the salary DEK using <code>SalaryKeyService.unwrapDekFromGrant()</code>.</li>
+                    <li>Sets the DEK into <code>SalaryDekHolder</code> ThreadLocal before proceeding, then clears it in <code>finally</code>.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini guard">403 on failure</span><span class="mini db">KeyGrant</span><span class="mini crypto">unwrap DEK</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">JPA converter</div>
+                <div>
+                  <h4><code>SalaryConverter</code> -> <code>EncryptionService</code></h4>
+                  <p><code>SalaryRecord.netBaseSalary</code> and audit amount fields use <code>SalaryConverter</code>. On write it encrypts <code>BigDecimal.toPlainString()</code>; on read it decrypts the stored bytes.</p>
+                  <ul>
+                    <li>If no DEK is in <code>SalaryDekHolder</code>, PMS throws <code>SalaryKeyRequiredException</code> and returns 403.</li>
+                    <li>Salary create uses <code>saveAndFlush()</code> so encryption happens while the grant key is still in the holder.</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="meta"><span class="mini crypto">AES/GCM/NoPadding</span><span class="mini db">salary_records.net_base_salary</span><span class="mini db">audit_records.*_value_enc</span></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section panel pad">
+        <div class="section-head">
+          <div>
+            <h2>Crypto Tree</h2>
+            <p>The salary value encryption key is a 32-byte DEK. KMS protects the canonical DEK, passkey PRF protects a per-credential wrap, and the short-lived grant token protects a temporary wrap.</p>
+          </div>
+        </div>
+
+        <div class="crypto-stack">
+          <div class="crypto-step">
+            <div class="idx">1</div>
+            <div>
+              <h3>Canonical salary DEK</h3>
+              <p>If no KMS wrap exists, PMS generates <code>32</code> random bytes using <code>SecureRandom</code>. It stores <code>SalaryDekWrap(version=1, recipient=kms, wrappedDek=KMS.encrypt(rawDek))</code>. In local mode, <code>LocalDekWrapper</code> is a test-only prefix wrapper.</p>
+            </div>
+          </div>
+          <div class="crypto-step">
+            <div class="idx">2</div>
+            <div>
+              <h3>Passkey PRF wrap</h3>
+              <p>During authentication, PMS derives <code>AES key = SHA-256("ims-passkey-dek-wrap-v1" || 0x00 || passkeyPrfOutput)</code>. It stores or reads <code>SalaryDekWrap(version=1, recipient=pk:base64url(SHA-256("ims-passkey-recipient-v1" || 0x00 || credentialId)))</code>.</p>
+            </div>
+          </div>
+          <div class="crypto-step">
+            <div class="idx">3</div>
+            <div>
+              <h3>Grant token wrap</h3>
+              <p>PMS generates a random 32-byte grant token and derives <code>AES key = SHA-256("ims-key-grant-wrap-v1" || 0x00 || grantTokenUtf8)</code>. It stores <code>KeyGrant.wrappedDek = AES-GCM(grantKey, rawDek)</code> and only stores <code>SHA-256(grantToken)</code> for lookup.</p>
+            </div>
+          </div>
+          <div class="crypto-step">
+            <div class="idx">4</div>
+            <div>
+              <h3>Salary value encryption</h3>
+              <p>For each salary amount, <code>AesGcmCipher</code> uses <code>AES/GCM/NoPadding</code>, a fresh 12-byte IV, and a 128-bit tag. The database payload is <code>iv || ciphertextAndTag</code>.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="callout section">
+          <strong>Important boundary:</strong> WebAuthn private keys and PRF secrets stay on the authenticator. PMS receives the WebAuthn public key during registration and receives the PRF output during authentication. PMS never stores the raw grant token, only its hash and a DEK wrap encrypted under a grant-derived key.
+        </div>
+      </section>
+
+      <section class="section panel pad">
+        <div class="section-head">
+          <div>
+            <h2>Endpoint Matrix</h2>
+            <p>Quick lookup for the passkey-related public API surface.</p>
+          </div>
+        </div>
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>Controller -> Service</th>
+              <th>Entities touched</th>
+              <th>Outcome</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>GET /api/passkeys</code></td>
+              <td><code>PasskeyController.status</code> -> <code>PasskeyService.isRegistered</code></td>
+              <td><code>PasskeyCredential</code></td>
+              <td>Returns <code>{ registered }</code> for the JWT email.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/passkeys/registration/options</code></td>
+              <td><code>registrationOptions</code> -> <code>startRegistration</code></td>
+              <td><code>PasskeyCeremony</code></td>
+              <td>Single-use WebAuthn creation options with PRF enabled.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/passkeys/registration/verify</code></td>
+              <td><code>verifyRegistration</code> -> <code>finishRegistration</code></td>
+              <td><code>PasskeyCeremony</code>, <code>PasskeyCredential</code></td>
+              <td>Stores verified public credential and marks approval as pending.</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/key-approvals/pending</code></td>
+              <td><code>KeyApprovalController.pending</code> -> <code>KeyApprovalService.pending</code></td>
+              <td><code>PasskeyCredential</code>, <code>KeyApproval</code></td>
+              <td>Lists active credentials with no active approval.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/key-approvals</code></td>
+              <td><code>approve</code> -> <code>KeyApprovalService.approve</code></td>
+              <td><code>KeyApproval</code></td>
+              <td>Approves a credential if approver is a different admin.</td>
+            </tr>
+            <tr>
+              <td><code>DELETE /api/key-approvals/{credentialId}</code></td>
+              <td><code>revokeOrDelete</code> -> <code>KeyApprovalService.revokeOrDelete</code></td>
+              <td><code>KeyApproval</code> or <code>PasskeyCredential</code></td>
+              <td>Revokes an approval or deletes a pending credential.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/passkeys/authentication/options</code></td>
+              <td><code>authenticationOptions</code> -> <code>startAuthentication</code></td>
+              <td><code>PasskeyCredential</code>, <code>PasskeyCeremony</code></td>
+              <td>Single-use assertion options with PRF salt.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/passkeys/authentication/verify</code></td>
+              <td><code>verifyAuthentication</code> -> <code>finishAuthentication</code></td>
+              <td><code>PasskeyCredential</code>, <code>KeyApproval</code>, <code>SalaryDekWrap</code>, <code>KeyGrant</code></td>
+              <td>Returns short-lived raw grant token and expiry.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/passkeys/authentication/revoke</code></td>
+              <td><code>revokeAuthentication</code> -> <code>revokeKeyGrant</code></td>
+              <td><code>KeyGrant</code></td>
+              <td>Sets <code>revokedAt</code>; token stops working immediately.</td>
+            </tr>
+            <tr>
+              <td><code>GET/POST /api/salaries...</code></td>
+              <td><code>SalaryRecordController</code> -> <code>SalaryRecordService</code> + <code>KeyGrantAspect</code></td>
+              <td><code>KeyGrant</code>, <code>SalaryRecord</code>, <code>AuditRecord</code></td>
+              <td>Requires <code>X-Key-Grant-Token</code>; decrypts/encrypts salary values.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section panel pad">
+        <div class="section-head">
+          <div>
+            <h2>State and Storage</h2>
+            <p>What each table means in the passkey and salary-key model.</p>
+          </div>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <h3><code>passkey_ceremonies</code></h3>
+            <p>Temporary, single-use WebAuthn request storage.</p>
+            <ul>
+              <li><code>id</code>: ceremony ID sent to the mock.</li>
+              <li><code>type</code>: REGISTRATION or AUTHENTICATION.</li>
+              <li><code>request_json</code>: original Yubico request options.</li>
+              <li>Expired after 6 minutes and deleted on verify.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><code>passkey_credentials</code></h3>
+            <p>Long-lived public credential registration.</p>
+            <ul>
+              <li>Credential ID and public key COSE are stored.</li>
+              <li>User identity is external ID plus email.</li>
+              <li><code>active=false</code> disables the credential.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><code>key_approvals</code></h3>
+            <p>Dual-control approval by a different admin.</p>
+            <ul>
+              <li>One row per credential ID.</li>
+              <li>Inactive or revoked approvals do not release keys.</li>
+              <li>Checked when minting every grant.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><code>salary_dek_wraps</code></h3>
+            <p>Encrypted copies of the same salary DEK for different recipients.</p>
+            <ul>
+              <li><code>recipient=kms</code> or <code>local</code> is the canonical wrap.</li>
+              <li><code>recipient=pk:...</code> is a passkey PRF-derived wrap.</li>
+              <li>Unique by <code>(version, recipient)</code>.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><code>key_grants</code></h3>
+            <p>Short-lived server-side grant record.</p>
+            <ul>
+              <li>Stores <code>token_hash</code>, never raw token.</li>
+              <li>Stores <code>wrapped_dek</code> encrypted under grant-derived AES key.</li>
+              <li>Bound to user external ID and email.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><code>salary_records</code> and <code>audit_records</code></h3>
+            <p>Encrypted salary values and append-only audit trail.</p>
+            <ul>
+              <li><code>net_base_salary</code> is BYTEA encrypted via <code>SalaryConverter</code>.</li>
+              <li>Audit old/new values are also encrypted when present.</li>
+              <li>Decrypt audit rows are metadata only.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section panel pad">
+        <div class="section-head">
+          <div>
+            <h2>Failure Map</h2>
+            <p>How common passkey and grant failures surface.</p>
+          </div>
+        </div>
+        <details open>
+          <summary>Browser returns <code>NotAllowedError</code> and PMS <code>/verify</code> is never called</summary>
+          <div class="body">
+            The failure happened inside <code>navigator.credentials.create()</code> or <code>navigator.credentials.get()</code>. PMS never received a credential. Usual suspects are user cancellation, phone pairing, Bluetooth/proximity, unavailable provider option, or platform UI failure.
+          </div>
+        </details>
+        <details>
+          <summary><code>403 Passkey PRF support is required for key release</code></summary>
+          <div class="body">
+            Registration completed but the credential did not report PRF enabled. PMS refuses to store it for salary key release.
+          </div>
+        </details>
+        <details>
+          <summary><code>403 Key authority has not approved this passkey</code></summary>
+          <div class="body">
+            Authentication succeeded, but <code>SalaryKeyValidator.requireKeyApproval()</code> did not find an active approval for that credential/user/email tuple.
+          </div>
+        </details>
+        <details>
+          <summary><code>403 Key grant is required</code> on salary endpoints</summary>
+          <div class="body">
+            <code>SalaryAccessGrantGuard</code> did not find a valid <code>X-Key-Grant-Token</code>. Missing, expired, revoked, wrong user, wrong email, or unknown token hash all collapse to this error.
+          </div>
+        </details>
+        <details>
+          <summary><code>403 Salary access requires a passkey-gated salary key</code></summary>
+          <div class="body">
+            A salary converter tried to encrypt or decrypt without a DEK in <code>SalaryDekHolder</code>. In normal flow this is prevented by <code>@RequiresKeyGrant</code> and the aspect.
+          </div>
+        </details>
+      </section>
+
+      <section class="section panel pad">
+        <div class="section-head">
+          <div>
+            <h2>Source Map</h2>
+            <p>The files this diagram is based on.</p>
+          </div>
+        </div>
+        <div class="source-grid">
+          <code>backend/pms/src/main/kotlin/.../controller/PasskeyController.kt</code>
+          <code>backend/pms/src/main/kotlin/.../service/PasskeyService.kt</code>
+          <code>backend/pms/src/main/kotlin/.../service/KeyApprovalService.kt</code>
+          <code>backend/pms/src/main/kotlin/.../security/KeyGrantAspect.kt</code>
+          <code>backend/pms/src/main/kotlin/.../security/SalaryAccessGrantGuard.kt</code>
+          <code>backend/pms/src/main/kotlin/.../encryption/SalaryKeyService.kt</code>
+          <code>backend/pms/src/main/kotlin/.../encryption/AesGcmCipher.kt</code>
+          <code>backend/pms/src/main/kotlin/.../converter/SalaryConverter.kt</code>
+          <code>src/api/pmsClient.ts</code>
+          <code>src/api/webauthn.ts</code>
+          <code>api/pms-api/[...path].ts</code>
+          <code>src/App.tsx</code>
+        </div>
+      </section>
+
+      <section class="section panel pad">
+        <div class="section-head">
+          <div>
+            <h2>Minimal Mental Model</h2>
+            <p>Keep this in your head when debugging the flow.</p>
+          </div>
+        </div>
+        <pre>JWT proves who the admin is.
+WebAuthn passkey proves the admin is present and verified.
+PRF output lets PMS unwrap the salary DEK for that specific approved credential.
+KeyApproval proves another admin allowed that credential to release salary keys.
+KeyGrant is a short-lived token that temporarily carries access to the DEK.
+SalaryConverter only works while KeyGrantAspect has placed the DEK in SalaryDekHolder.
+Without X-Key-Grant-Token, salary endpoints fail before salary data is decrypted.</pre>
+      </section>
+    </main>
+  </body>
+</html>
