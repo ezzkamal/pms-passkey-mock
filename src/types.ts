@@ -1,27 +1,4 @@
-export type Section = "passkeys" | "approvals" | "salaries" | "payroll-runs" | "audit";
-
-export type PayrollRunStatus = "DRAFT" | "OPEN" | "LOCKED";
-
-export type PayrollRun = {
-  id: string;
-  year: number;
-  month: number;
-  periodStart: string;
-  periodEnd: string;
-  status: PayrollRunStatus;
-  lockedAt: string | null;
-  createdBy?: string | null;
-  createdAt: string;
-};
-
-export type PayrollRunStatusTransition = {
-  id: string;
-  runId: string;
-  fromStatus: PayrollRunStatus | null;
-  toStatus: PayrollRunStatus;
-  changedBy: string;
-  changedAt: string;
-};
+export type Section = "passkeys" | "approvals" | "salaries" | "audit";
 
 export type SalaryRecordSource = "MANUAL" | "IMPORT" | "CORRECTION";
 

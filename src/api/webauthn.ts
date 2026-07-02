@@ -1,5 +1,7 @@
 type JsonObject = Record<string, unknown>;
 
+const DEFAULT_WEBAUTHN_TIMEOUT_MS = 300_000;
+
 export function base64urlToBuffer(value: string): ArrayBuffer {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
   const binary = typeof atob === "function" ? atob(base64) : Buffer.from(base64, "base64").toString("binary");
@@ -35,6 +37,7 @@ export function toCredentialCreationOptions(publicKeyJson: unknown): CredentialC
   }
 
   decodePrfInputs(publicKey);
+  applyDefaultTimeout(publicKey);
   return { publicKey: publicKey as unknown as PublicKeyCredentialCreationOptions };
 }
 
@@ -47,6 +50,7 @@ export function toCredentialRequestOptions(publicKeyJson: unknown): CredentialRe
   }
 
   decodePrfInputs(publicKey);
+  applyDefaultTimeout(publicKey);
   return { publicKey: publicKey as unknown as PublicKeyCredentialRequestOptions };
 }
 
@@ -82,7 +86,7 @@ export function serializeCredential(credential: PublicKeyCredential): string {
 
 export async function createPasskeyCredential(publicKeyJson: unknown): Promise<string> {
   ensureWebAuthn();
-  const credential = await runWebAuthn(() => navigator.credentials.create(toCredentialCreationOptions(publicKeyJson)));
+  const credential = await runWebAuthn("registration", () => navigator.credentials.create(toCredentialCreationOptions(publicKeyJson)));
   if (!credential || credential.type !== "public-key") {
     throw new Error("Passkey registration was cancelled or returned an unsupported credential.");
   }
@@ -91,19 +95,25 @@ export async function createPasskeyCredential(publicKeyJson: unknown): Promise<s
 
 export async function getPasskeyCredential(publicKeyJson: unknown): Promise<string> {
   ensureWebAuthn();
-  const credential = await runWebAuthn(() => navigator.credentials.get(toCredentialRequestOptions(publicKeyJson)));
+  const credential = await runWebAuthn("authentication", () => navigator.credentials.get(toCredentialRequestOptions(publicKeyJson)));
   if (!credential || credential.type !== "public-key") {
     throw new Error("Passkey authentication was cancelled or returned an unsupported credential.");
   }
   return serializeCredential(credential as PublicKeyCredential);
 }
 
-async function runWebAuthn(action: () => Promise<Credential | null>): Promise<Credential | null> {
+async function runWebAuthn(operation: "registration" | "authentication", action: () => Promise<Credential | null>): Promise<Credential | null> {
   try {
     return await action();
   } catch (error) {
-    if (error instanceof DOMException && error.name === "NotAllowedError") {
-      throw new Error("Passkey prompt timed out, was cancelled, or that option is not available. Try another passkey option.");
+    if (error instanceof DOMException) {
+      const browserMessage = error.message ? `: ${error.message}` : "";
+      if (error.name === "NotAllowedError") {
+        throw new Error(
+          `WebAuthn ${operation} failed before PMS verification (${error.name})${browserMessage}. The browser did not create a credential; check phone pairing, Bluetooth/proximity, cancellation, or unavailable passkey options.`,
+        );
+      }
+      throw new Error(`WebAuthn ${operation} failed before PMS verification (${error.name})${browserMessage}.`);
     }
     throw error;
   }
@@ -153,6 +163,12 @@ function decodePrfValue(value: JsonObject | undefined) {
   }
   if (typeof value.second === "string") {
     value.second = base64urlToBuffer(value.second);
+  }
+}
+
+function applyDefaultTimeout(publicKey: JsonObject) {
+  if (typeof publicKey.timeout !== "number" || publicKey.timeout < DEFAULT_WEBAUTHN_TIMEOUT_MS) {
+    publicKey.timeout = DEFAULT_WEBAUTHN_TIMEOUT_MS;
   }
 }
 

@@ -1,15 +1,4 @@
-import {
-  Banknote,
-  History,
-  KeyRound,
-  Monitor,
-  LockKeyhole,
-  RefreshCw,
-  ShieldCheck,
-  Smartphone,
-  Trash2,
-  UserCheck,
-} from "lucide-react";
+import { History, KeyRound, Monitor, LockKeyhole, RefreshCw, ShieldCheck, Smartphone, Trash2, UserCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   clearClientConfig,
@@ -27,8 +16,6 @@ import type {
   KeyApprovalResponse,
   PagedResponse,
   PasskeyRegistrationMode,
-  PayrollRun,
-  PayrollRunStatusTransition,
   SalaryRecord,
   SalaryRecordSource,
   Section,
@@ -38,9 +25,12 @@ const sectionLabels: Record<Section, string> = {
   passkeys: "Passkeys",
   approvals: "Key Approvals",
   salaries: "Salaries",
-  "payroll-runs": "Payroll Runs",
   audit: "Audit",
 };
+
+const SALARY_AUDIT_ENTITY = "salary";
+const DENIED_SALARY_ENTITY_ID = "00000000-0000-0000-0000-000000000000";
+const LAST_SALARY_EMPLOYEE_STORAGE_KEY = "pms-mock-salary-employee-external-id";
 
 type FlowState = {
   registered: boolean | null;
@@ -65,11 +55,26 @@ function formatCountdown(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function loadLastSalaryEmployeeExternalId(): string {
+  if (typeof window === "undefined" || !window.localStorage) return "";
+  return window.localStorage.getItem(LAST_SALARY_EMPLOYEE_STORAGE_KEY) || "";
+}
+
+function saveLastSalaryEmployeeExternalId(employeeExternalId: string) {
+  if (!window.localStorage) return;
+  const trimmed = employeeExternalId.trim();
+  if (trimmed) {
+    window.localStorage.setItem(LAST_SALARY_EMPLOYEE_STORAGE_KEY, trimmed);
+  } else {
+    window.localStorage.removeItem(LAST_SALARY_EMPLOYEE_STORAGE_KEY);
+  }
+}
+
 function App() {
   const [section, setSection] = useState<Section>("passkeys");
   const [config, setConfig] = useState<PmsClientConfig>(() => loadClientConfig());
   const [flow, setFlow] = useState<FlowState>({ registered: null, approval: "unknown" });
-  const [auditTarget, setAuditTarget] = useState<AuditTarget>({ entity: "SalaryRecord", entityId: "" });
+  const [auditTarget, setAuditTarget] = useState<AuditTarget>({ entity: SALARY_AUDIT_ENTITY, entityId: "" });
   const [vaultUnlockedOnce, setVaultUnlockedOnce] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [toast, setToast] = useState("");
@@ -168,7 +173,6 @@ function App() {
               {item === "passkeys" && <KeyRound size={17} />}
               {item === "approvals" && <UserCheck size={17} />}
               {item === "salaries" && <LockKeyhole size={17} />}
-              {item === "payroll-runs" && <Banknote size={17} />}
               {item === "audit" && <History size={17} />}
               {sectionLabels[item]}
             </button>
@@ -231,7 +235,6 @@ function App() {
                       onGoToPasskeys={() => setSection("passkeys")}
                     />
                   )}
-                  {section === "payroll-runs" && <PayrollRunsView config={config} onToast={pushToast} />}
                   {section === "audit" && <AuditView config={config} target={auditTarget} onTarget={setAuditTarget} />}
                 </>
               )}
@@ -401,12 +404,19 @@ function PasskeyWorkflow({
       // Registered — the pending-approvals list tells us whether the key authority has signed it off.
       let approval: ApprovalState = flow.approval;
       try {
-        const pending = await pmsClient.getPendingKeyApprovals(config);
+        const [pending, approved] = await Promise.all([pmsClient.getPendingKeyApprovals(config), pmsClient.getApprovedKeyApprovals(config)]);
         const minePending = sessionEmail ? pending.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase()) : false;
-        approval = minePending ? "pending" : "approved";
-        appendLog(minePending ? "Your passkey is still waiting for approval by another admin." : "Your passkey has been approved by the key authority.");
+        const mineApproved = sessionEmail ? approved.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase()) : false;
+        approval = minePending ? "pending" : mineApproved ? "approved" : "unknown";
+        appendLog(
+          minePending
+            ? "Your passkey is still waiting for approval by another admin."
+            : mineApproved
+              ? "Your passkey has been approved by the key authority."
+              : "No active approval was found for your passkey.",
+        );
       } catch {
-        appendLog("Could not determine approval state from the pending list.");
+        appendLog("Could not determine approval state from the approval lists.");
       }
       onFlow({ registered: true, approval });
     });
@@ -415,7 +425,7 @@ function PasskeyWorkflow({
   async function registerPasskey() {
     await run("Registering passkey", async () => {
       const options = await pmsClient.startPasskeyRegistration(config, registrationMode);
-      appendLog(`Registration ceremony ${options.ceremonyId} started (single-use, expires in 5 minutes).`);
+      appendLog(`Registration ceremony ${options.ceremonyId} started (single-use, expires in 6 minutes).`);
       const credentialJson = await createPasskeyCredential(options.publicKey);
       appendLog("Authenticator created a resident credential with the PRF extension (needed to derive the salary key).");
       await pmsClient.finishPasskeyRegistration({ ceremonyId: options.ceremonyId, credentialJson }, config);
@@ -482,7 +492,7 @@ function PasskeyWorkflow({
         <div className="status-strip">
           <StatusItem label="Context" value={window.isSecureContext ? "Secure" : "Not secure"} tone={window.isSecureContext ? "ok" : "bad"} />
           <StatusItem label="Grant TTL" value="~10 minutes server-side" tone="ok" />
-          <StatusItem label="Ceremony TTL" value="5 minutes, single-use" tone="ok" />
+          <StatusItem label="Ceremony TTL" value="6 minutes, single-use" tone="ok" />
         </div>
         <div className="button-row">
           <button className="btn secondary" type="button" onClick={checkStatus} disabled={Boolean(busy)}>
@@ -563,19 +573,23 @@ function KeyApprovalsView({
   onFlow: (flow: FlowState) => void;
   onToast: (message: string) => void;
 }) {
-  const [approvals, setApprovals] = useState<KeyApprovalResponse[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<KeyApprovalResponse[]>([]);
+  const [approvedApprovals, setApprovedApprovals] = useState<KeyApprovalResponse[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [busyCredentialId, setBusyCredentialId] = useState("");
   const [error, setError] = useState("");
 
   async function loadApprovals() {
     setError("");
     try {
-      const pending = await pmsClient.getPendingKeyApprovals(config);
-      setApprovals(pending);
+      const [approved, pending] = await Promise.all([pmsClient.getApprovedKeyApprovals(config), pmsClient.getPendingKeyApprovals(config)]);
+      setApprovedApprovals(approved);
+      setPendingApprovals(pending);
       setLoaded(true);
       if (flow.registered && sessionEmail) {
         const minePending = pending.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase());
-        onFlow({ ...flow, approval: minePending ? "pending" : "approved" });
+        const mineApproved = approved.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase());
+        onFlow({ ...flow, approval: minePending ? "pending" : mineApproved ? "approved" : "unknown" });
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load key approvals.");
@@ -583,6 +597,7 @@ function KeyApprovalsView({
   }
 
   async function approve(credentialId: string) {
+    setBusyCredentialId(credentialId);
     setError("");
     try {
       await pmsClient.approveKey(credentialId, config);
@@ -590,6 +605,22 @@ function KeyApprovalsView({
       await loadApprovals();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not approve key.");
+    } finally {
+      setBusyCredentialId("");
+    }
+  }
+
+  async function removeApproval(credentialId: string, message: string) {
+    setBusyCredentialId(credentialId);
+    setError("");
+    try {
+      await pmsClient.deleteKeyApproval(credentialId, config);
+      onToast(message);
+      await loadApprovals();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update key approval.");
+    } finally {
+      setBusyCredentialId("");
     }
   }
 
@@ -597,288 +628,118 @@ function KeyApprovalsView({
     void loadApprovals();
   }, [config.authToken, config.baseUrl]);
 
-  return (
-    <div className="panel">
-      <div className="section-head">
-        <div>
-          <h2>Key approvals</h2>
-          <p>
-            Dual control over the salary key: a freshly registered passkey lands here, and PMS rejects approval by the credential&apos;s own user. One approval
-            by a different admin is enough.
-          </p>
-        </div>
-        <button className="btn secondary" type="button" onClick={loadApprovals}>
-          <RefreshCw size={16} />
-          Reload
-        </button>
-      </div>
-      {error && <div className="alert error">{error}</div>}
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Credential ID</th>
-              <th>Email</th>
-              <th>User</th>
-              <th>Created</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {approvals.map((approval) => {
-              const own = Boolean(sessionEmail) && approval.email.toLowerCase() === sessionEmail.toLowerCase();
-              return (
-                <tr key={approval.credentialId}>
-                  <td className="mono">{approval.credentialId}</td>
-                  <td>
-                    {approval.email}
-                    {own && <span className="flag amber">your key</span>}
-                  </td>
-                  <td>{approval.userExternalId}</td>
-                  <td>{approval.createdAt || "-"}</td>
-                  <td>
-                    <button className="btn secondary compact" type="button" onClick={() => approve(approval.credentialId)} title={own ? "PMS will reject self-approval — sign in as another admin." : "Approve this key"}>
-                      Approve
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-            {approvals.length === 0 && <EmptyTable colSpan={5} label={loaded ? "No passkeys are waiting for approval." : "Loading pending approvals..."} />}
-          </tbody>
-        </table>
-      </div>
-      {approvals.some((approval) => sessionEmail && approval.email.toLowerCase() === sessionEmail.toLowerCase()) && (
-        <div className="alert info">
-          Your own key is in this list. Approving it from this session will fail with &quot;Key approval requires a different approver&quot; — that is the
-          simulation working as designed. Sign in as a second admin (e.g. in another browser profile) to approve it.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PayrollRunsView({ config, onToast }: { config: PmsClientConfig; onToast: (message: string) => void }) {
-  const [runs, setRuns] = useState<PayrollRun[]>([]);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [year, setYear] = useState(String(new Date().getFullYear()));
-  const [month, setMonth] = useState(String(new Date().getMonth() + 1));
-  const [historical, setHistorical] = useState(false);
-  const [transitionsFor, setTransitionsFor] = useState<string | null>(null);
-  const [transitions, setTransitions] = useState<PayrollRunStatusTransition[]>([]);
-  const [periodEditFor, setPeriodEditFor] = useState<string | null>(null);
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState("");
-
-  const activeRun = runs.find((run) => run.status === "DRAFT" || run.status === "OPEN") || null;
-
-  async function loadRuns() {
-    setLoading(true);
-    setError("");
-    try {
-      setRuns(await pmsClient.listPayrollRuns(config));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load payroll runs.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function createRun() {
-    setLoading(true);
-    setError("");
-    try {
-      await pmsClient.createPayrollRun({ year: Number(year), month: Number(month), status: historical ? "LOCKED" : "DRAFT" }, config);
-      onToast(historical ? "Historical run imported as LOCKED." : "Payroll run created as DRAFT.");
-      await loadRuns();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not create payroll run.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function transition(id: string, nextStatus: "OPEN" | "LOCKED") {
-    setError("");
-    try {
-      await pmsClient.transitionPayrollRun(id, nextStatus, config);
-      onToast(nextStatus === "LOCKED" ? "Run locked. Its period is now immutable." : "Run opened for processing.");
-      await loadRuns();
-      if (transitionsFor === id) await showTransitions(id);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not transition payroll run.");
-    }
-  }
-
-  async function showTransitions(id: string) {
-    setError("");
-    try {
-      setTransitions(await pmsClient.getPayrollRunTransitions(id, config));
-      setTransitionsFor(id);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load transition history.");
-    }
-  }
-
-  function startPeriodEdit(run: PayrollRun) {
-    setPeriodEditFor(run.id);
-    setPeriodStart(run.periodStart);
-    setPeriodEnd(run.periodEnd);
-  }
-
-  async function savePeriod(id: string) {
-    setError("");
-    try {
-      await pmsClient.updatePayrollRunPeriod(id, periodStart, periodEnd, config);
-      setPeriodEditFor(null);
-      onToast("Payroll period updated.");
-      await loadRuns();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not update period.");
-    }
-  }
-
-  useEffect(() => {
-    void loadRuns();
-  }, [config.authToken, config.baseUrl]);
+  const ownPending = pendingApprovals.some((approval) => sessionEmail && approval.email.toLowerCase() === sessionEmail.toLowerCase());
 
   return (
-    <div className="panel">
-      <div className="section-head">
-        <div>
-          <h2>Payroll runs</h2>
-          <p>
-            Lifecycle is strictly DRAFT → OPEN → LOCKED, one run per month, and only one DRAFT/OPEN run may exist at a time. Every transition is recorded with
-            its actor.
-          </p>
+    <div className="work-grid">
+      <div className="panel">
+        <div className="section-head">
+          <div>
+            <h2>Key approvals</h2>
+            <p>
+              Dual control over the salary key: a freshly registered passkey lands here, and PMS rejects approval by the credential&apos;s own user. One approval
+              by a different admin is enough.
+            </p>
+          </div>
+          <button className="btn secondary" type="button" onClick={() => void loadApprovals()} disabled={Boolean(busyCredentialId)}>
+            <RefreshCw size={16} />
+            Reload
+          </button>
         </div>
-        <button className="btn secondary" type="button" onClick={loadRuns} disabled={loading}>
-          <RefreshCw size={16} />
-          Reload
-        </button>
-      </div>
-      {activeRun && (
-        <div className="alert info">
-          {activeRun.year}-{String(activeRun.month).padStart(2, "0")} is currently {activeRun.status}. PMS will reject creating another run until it is LOCKED.
-        </div>
-      )}
-      <div className="inline-form">
-        <label>
-          Year
-          <input value={year} onChange={(event) => setYear(event.target.value)} />
-        </label>
-        <label>
-          Month
-          <input value={month} onChange={(event) => setMonth(event.target.value)} />
-        </label>
-        <label>
-          Historical import
-          <select value={historical ? "yes" : "no"} onChange={(event) => setHistorical(event.target.value === "yes")}>
-            <option value="no">No — create as DRAFT</option>
-            <option value="yes">Yes — create as LOCKED</option>
-          </select>
-        </label>
-        <button className="btn primary inline-action" type="button" onClick={createRun} disabled={loading}>
-          Create run
-        </button>
-      </div>
-      {error && <div className="alert error">{error}</div>}
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Period</th>
-              <th>Dates</th>
-              <th>Status</th>
-              <th>Created by</th>
-              <th>Locked</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <tr key={run.id}>
-                <td>
-                  {run.year}-{String(run.month).padStart(2, "0")}
-                </td>
-                <td>
-                  {periodEditFor === run.id ? (
-                    <span className="button-row">
-                      <input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} />
-                      <input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} />
-                      <button className="btn primary compact" type="button" onClick={() => savePeriod(run.id)}>
-                        Save
-                      </button>
-                      <button className="btn secondary compact" type="button" onClick={() => setPeriodEditFor(null)}>
-                        Cancel
-                      </button>
-                    </span>
-                  ) : (
-                    `${run.periodStart} → ${run.periodEnd}`
-                  )}
-                </td>
-                <td>
-                  <span className={run.status === "LOCKED" ? "badge amber" : "badge blue"}>{run.status}</span>
-                </td>
-                <td>{run.createdBy || "-"}</td>
-                <td>{run.lockedAt || "-"}</td>
-                <td>
-                  <span className="button-row">
-                    {run.status === "DRAFT" && (
-                      <button className="btn secondary compact" type="button" onClick={() => transition(run.id, "OPEN")}>
-                        Open
-                      </button>
-                    )}
-                    {run.status === "OPEN" && (
-                      <button className="btn secondary compact" type="button" onClick={() => transition(run.id, "LOCKED")}>
-                        Lock
-                      </button>
-                    )}
-                    {run.status !== "LOCKED" && periodEditFor !== run.id && (
-                      <button className="btn secondary compact" type="button" onClick={() => startPeriodEdit(run)}>
-                        Edit period
-                      </button>
-                    )}
-                    <button className="btn secondary compact" type="button" onClick={() => (transitionsFor === run.id ? setTransitionsFor(null) : void showTransitions(run.id))}>
-                      {transitionsFor === run.id ? "Hide history" : "History"}
-                    </button>
-                  </span>
-                </td>
+        {error && <div className="alert error">{error}</div>}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Credential ID</th>
+                <th>Email</th>
+                <th>User</th>
+                <th>Created</th>
+                <th>Action</th>
               </tr>
-            ))}
-            {runs.length === 0 && <EmptyTable colSpan={6} label={loading ? "Loading payroll runs..." : "No payroll runs returned by PMS."} />}
-          </tbody>
-        </table>
-      </div>
-      {transitionsFor && (
-        <div className="result-card">
-          <h2>Status history</h2>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Changed by</th>
-                  <th>Changed at</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transitions.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{entry.fromStatus || "created"}</td>
-                    <td>{entry.toStatus}</td>
-                    <td>{entry.changedBy}</td>
-                    <td>{entry.changedAt}</td>
+            </thead>
+            <tbody>
+              {pendingApprovals.map((approval) => {
+                const own = Boolean(sessionEmail) && approval.email.toLowerCase() === sessionEmail.toLowerCase();
+                const busy = busyCredentialId === approval.credentialId;
+                return (
+                  <tr key={approval.credentialId}>
+                    <td className="mono">{approval.credentialId}</td>
+                    <td>
+                      {approval.email}
+                      {own && <span className="flag amber">your key</span>}
+                    </td>
+                    <td>{approval.userExternalId}</td>
+                    <td>{approval.createdAt || "-"}</td>
+                    <td>
+                      <div className="row-actions">
+                        <button className="btn secondary compact" type="button" onClick={() => void approve(approval.credentialId)} disabled={busy} title={own ? "PMS will reject self-approval — sign in as another admin." : "Approve this key"}>
+                          Approve
+                        </button>
+                        <button className="btn danger compact" type="button" onClick={() => void removeApproval(approval.credentialId, "Pending passkey approval request deleted.")} disabled={busy}>
+                          <Trash2 size={13} />
+                          Delete
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                ))}
-                {transitions.length === 0 && <EmptyTable colSpan={4} label="No transitions recorded." />}
-              </tbody>
-            </table>
+                );
+              })}
+              {pendingApprovals.length === 0 && <EmptyTable colSpan={5} label={loaded ? "No passkeys are waiting for approval." : "Loading pending approvals..."} />}
+            </tbody>
+          </table>
+        </div>
+        {ownPending && (
+          <div className="alert info">
+            Your own key is in this list. Approving it from this session will fail with &quot;Key approval requires a different approver&quot; — that is the
+            simulation working as designed. Sign in as a second admin (e.g. in another browser profile) to approve it.
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="section-head">
+          <div>
+            <h2>Approved keys</h2>
+            <p>Revoking an approval blocks future salary key grants for that passkey. The credential can be approved again later by another admin.</p>
           </div>
         </div>
-      )}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Credential ID</th>
+                <th>Email</th>
+                <th>User</th>
+                <th>Approved by</th>
+                <th>Approved at</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {approvedApprovals.map((approval) => {
+                const busy = busyCredentialId === approval.credentialId;
+                return (
+                  <tr key={approval.credentialId}>
+                    <td className="mono">{approval.credentialId}</td>
+                    <td>{approval.email}</td>
+                    <td>{approval.userExternalId}</td>
+                    <td>{approval.approvedBy || "-"}</td>
+                    <td>{approval.approvedAt || "-"}</td>
+                    <td>
+                      <button className="btn danger compact" type="button" onClick={() => void removeApproval(approval.credentialId, "Key approval revoked.")} disabled={busy}>
+                        <Trash2 size={13} />
+                        Revoke
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {approvedApprovals.length === 0 && <EmptyTable colSpan={6} label={loaded ? "No approved passkeys." : "Loading approved keys..."} />}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -900,38 +761,124 @@ function SalariesView({
   onInspectAudit: (target: AuditTarget) => void;
   onGoToPasskeys: () => void;
 }) {
-  const [employeeExternalId, setEmployeeExternalId] = useState("");
+  const [employeeExternalId, setEmployeeExternalId] = useState(loadLastSalaryEmployeeExternalId);
   const [asOf, setAsOf] = useState("");
   const [salary, setSalary] = useState<SalaryRecord | null>(null);
   const [history, setHistory] = useState<SalaryRecord[]>([]);
   const [amount, setAmount] = useState("");
   const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().slice(0, 10));
   const [source, setSource] = useState<SalaryRecordSource>("MANUAL");
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [headerProbeStatus, setHeaderProbeStatus] = useState<"idle" | "pending" | "sent" | "failed">("idle");
+  const [headerProbeError, setHeaderProbeError] = useState("");
   const [error, setError] = useState("");
+  const sectionProbeKey = useRef("");
+
+  function updateEmployeeExternalId(value: string) {
+    setEmployeeExternalId(value);
+    saveLastSalaryEmployeeExternalId(value);
+    setHeaderProbeStatus("idle");
+    setHeaderProbeError("");
+  }
+
+  async function reloadHistory(employeeId: string) {
+    const records = await pmsClient.getSalaryHistory(employeeId, config);
+    setHistory(records);
+    setHeaderProbeStatus("sent");
+    setHeaderProbeError("");
+    return records;
+  }
+
+  async function primeSalarySection(employeeId: string) {
+    setHeaderProbeStatus("pending");
+    setHeaderProbeError("");
+    try {
+      await reloadHistory(employeeId);
+      setHeaderProbeStatus("sent");
+      onUnlocked();
+    } catch (caught) {
+      setHeaderProbeStatus("failed");
+      setHeaderProbeError(caught instanceof Error ? caught.message : "Could not load salary history on section entry.");
+    }
+  }
+
+  useEffect(() => {
+    const employeeId = employeeExternalId.trim();
+    if (!grantActive || !employeeId) {
+      setHeaderProbeStatus("idle");
+      return;
+    }
+
+    const probeKey = `${config.baseUrl}|${config.authToken}|${config.keyGrantToken}|${employeeId}`;
+    if (sectionProbeKey.current === probeKey) return;
+
+    sectionProbeKey.current = probeKey;
+    void primeSalarySection(employeeId);
+  }, [grantActive, config.baseUrl, config.authToken, config.keyGrantToken]);
 
   async function loadSalary() {
+    const employeeId = employeeExternalId.trim();
+    if (!employeeId) {
+      setError("Employee external ID is required.");
+      return;
+    }
+
+    setLoading(true);
     setError("");
     try {
-      setSalary(await pmsClient.getSalary(employeeExternalId, config, asOf || undefined));
-      setHistory(await pmsClient.getSalaryHistory(employeeExternalId, config));
+      setSalary(await pmsClient.getSalary(employeeId, config, asOf || undefined));
+      try {
+        await reloadHistory(employeeId);
+      } catch (historyError) {
+        setError(historyError instanceof Error ? `Salary loaded, but history reload failed: ${historyError.message}` : "Salary loaded, but history reload failed.");
+      }
       onUnlocked();
       onToast("Salary decrypted. Each read was written to the audit trail as a DECRYPT event.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load salary.");
+    } finally {
+      setLoading(false);
     }
   }
 
   async function createSalary() {
+    const employeeId = employeeExternalId.trim();
+    const salaryAmount = Number(amount);
+    if (!employeeId) {
+      setError("Employee external ID is required.");
+      return;
+    }
+    if (!Number.isFinite(salaryAmount) || salaryAmount <= 0) {
+      setError("Net base salary must be greater than zero.");
+      return;
+    }
+    if (!effectiveFrom) {
+      setError("Effective from date is required.");
+      return;
+    }
+
+    setCreating(true);
     setError("");
     try {
-      await pmsClient.createSalary({ employeeExternalId, netBaseSalary: Number(amount), effectiveFrom, source }, config);
+      const created = await pmsClient.createSalary({ employeeExternalId: employeeId, netBaseSalary: salaryAmount, effectiveFrom, source }, config);
+      setSalary(created);
+      setAsOf("");
       onUnlocked();
       onToast("Salary record created. Any previously open record was closed the day before it takes effect.");
-      await loadSalary();
+      try {
+        await reloadHistory(employeeId);
+      } catch (historyError) {
+        setError(historyError instanceof Error ? `Salary record created, but history reload failed: ${historyError.message}` : "Salary record created, but history reload failed.");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create salary.");
+    } finally {
+      setCreating(false);
     }
   }
+
+  const trimmedEmployeeExternalId = employeeExternalId.trim();
 
   return (
     <div className="panel">
@@ -943,6 +890,10 @@ function SalariesView({
             exist in EMS. Every decrypt — and every denied attempt — is audited.
           </p>
         </div>
+        <button className="btn secondary compact" type="button" onClick={() => onInspectAudit({ entity: SALARY_AUDIT_ENTITY, entityId: DENIED_SALARY_ENTITY_ID })}>
+          <History size={14} />
+          Denied audit
+        </button>
       </div>
       {!grantActive && (
         <div className="alert warn">
@@ -955,23 +906,47 @@ function SalariesView({
       {grantActive && remainingMs !== null && (
         <div className="alert info">Key grant active — {formatCountdown(remainingMs)} until the vault locks again.</div>
       )}
+      {grantActive && !trimmedEmployeeExternalId && (
+        <div className="alert info">
+          Enter an employee external ID to send salary vault requests with <code>X-Key-Grant-Token</code>.
+        </div>
+      )}
+      {grantActive && trimmedEmployeeExternalId && headerProbeStatus !== "idle" && (
+        <div className={headerProbeStatus === "failed" ? "alert warn" : "alert info"}>
+          {headerProbeStatus === "pending" && (
+            <>
+              Opening Salaries: <code>GET /salaries/{trimmedEmployeeExternalId}/history</code> is sending <code>X-Key-Grant-Token</code>.
+            </>
+          )}
+          {headerProbeStatus === "sent" && (
+            <>
+              Network marker sent: <code>GET /salaries/{trimmedEmployeeExternalId}/history</code> used <code>X-Key-Grant-Token</code>.
+            </>
+          )}
+          {headerProbeStatus === "failed" && (
+            <>
+              Network marker failed: <code>GET /salaries/{trimmedEmployeeExternalId}/history</code> used <code>X-Key-Grant-Token</code>. {headerProbeError}
+            </>
+          )}
+        </div>
+      )}
       <div className="inline-form">
         <label>
           Employee external ID
-          <input value={employeeExternalId} onChange={(event) => setEmployeeExternalId(event.target.value)} placeholder="employee external id" />
+          <input value={employeeExternalId} onChange={(event) => updateEmployeeExternalId(event.target.value)} placeholder="employee external id" />
         </label>
         <label>
           As of (optional)
           <input value={asOf} onChange={(event) => setAsOf(event.target.value)} type="date" />
         </label>
-        <button className="btn secondary inline-action" type="button" onClick={loadSalary} disabled={!grantActive || !employeeExternalId}>
+        <button className="btn secondary inline-action" type="button" onClick={() => void loadSalary()} disabled={!grantActive || !trimmedEmployeeExternalId || loading}>
           Load salary
         </button>
       </div>
       <div className="inline-form">
         <label>
           Net base salary
-          <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
+          <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" min="0.01" step="0.01" type="number" />
         </label>
         <label>
           Effective from
@@ -985,16 +960,18 @@ function SalariesView({
             <option>CORRECTION</option>
           </select>
         </label>
-        <button className="btn primary inline-action" type="button" onClick={createSalary} disabled={!grantActive || !employeeExternalId || !amount}>
+        <button className="btn primary inline-action" type="button" onClick={() => void createSalary()} disabled={!grantActive || !trimmedEmployeeExternalId || !amount.trim() || !effectiveFrom || creating}>
           Create salary record
         </button>
       </div>
+      {loading && <div className="alert info">Loading salary...</div>}
+      {creating && <div className="alert info">Creating salary record...</div>}
       {error && <div className="alert error">{error}</div>}
       {salary && (
         <div className="result-card">
           <h2>{asOf ? `Salary as of ${asOf}` : "Current salary"}</h2>
           <pre>{JSON.stringify(salary, null, 2)}</pre>
-          <button className="btn secondary compact" type="button" onClick={() => onInspectAudit({ entity: "SalaryRecord", entityId: salary.id })}>
+          <button className="btn secondary compact" type="button" onClick={() => onInspectAudit({ entity: SALARY_AUDIT_ENTITY, entityId: salary.id })}>
             <History size={14} />
             View audit trail for this record
           </button>
@@ -1019,7 +996,7 @@ function SalariesView({
                 <td>{record.source}</td>
                 <td className="num">{record.netBaseSalary}</td>
                 <td>
-                  <button className="btn secondary compact" type="button" onClick={() => onInspectAudit({ entity: "SalaryRecord", entityId: record.id })}>
+                  <button className="btn secondary compact" type="button" onClick={() => onInspectAudit({ entity: SALARY_AUDIT_ENTITY, entityId: record.id })}>
                     Trail
                   </button>
                 </td>
@@ -1039,9 +1016,13 @@ function AuditView({ config, target, onTarget }: { config: PmsClientConfig; targ
   const [error, setError] = useState("");
 
   async function loadAudit(nextPage = 0) {
+    const entity = target.entity.trim();
+    const entityId = target.entityId.trim();
+    if (!entity || !entityId) return;
+
     setError("");
     try {
-      const response = await pmsClient.getAuditRecords(target.entity, target.entityId, config, nextPage);
+      const response = await pmsClient.getAuditRecords(entity, entityId, config, nextPage);
       setResult(response);
       setPage(nextPage);
     } catch (caught) {
@@ -1075,7 +1056,7 @@ function AuditView({ config, target, onTarget }: { config: PmsClientConfig; targ
           Entity ID (UUID)
           <input value={target.entityId} onChange={(event) => onTarget({ ...target, entityId: event.target.value })} placeholder="salary record id" />
         </label>
-        <button className="btn primary inline-action" type="button" onClick={() => loadAudit(0)} disabled={!target.entity || !target.entityId}>
+        <button className="btn primary inline-action" type="button" onClick={() => loadAudit(0)} disabled={!target.entity.trim() || !target.entityId.trim()}>
           Load audit
         </button>
       </div>

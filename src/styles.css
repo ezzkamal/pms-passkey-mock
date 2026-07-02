@@ -1030,6 +1030,13 @@ textarea {
   margin-bottom: 14px;
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .segmented-control {
   display: inline-flex;
   align-items: center;

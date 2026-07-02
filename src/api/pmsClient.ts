@@ -6,14 +6,11 @@ import type {
   PasskeyOptionsResponse,
   PasskeyRegistrationMode,
   PasskeyStatusResponse,
-  PayrollRun,
-  PayrollRunStatus,
-  PayrollRunStatusTransition,
   SalaryRecord,
   SalaryRecordSource,
 } from "../types";
 
-type HttpMethod = "GET" | "POST" | "PATCH";
+type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 export type PmsClientConfig = {
   baseUrl: string;
@@ -141,22 +138,6 @@ export const pmsClient = {
   revokeKeyGrant(token: string, config?: PmsClientConfig) {
     return request<void>("/passkeys/authentication/revoke", "POST", { token }, false, config);
   },
-  listPayrollRuns(config?: PmsClientConfig) {
-    return request<PayrollRun[]>("/payroll-runs", "GET", undefined, false, config);
-  },
-  // PMS rejects direct creation in OPEN; LOCKED is only for importing historical periods.
-  createPayrollRun(payload: { year: number; month: number; status: "DRAFT" | "LOCKED" }, config?: PmsClientConfig) {
-    return request<PayrollRun>("/payroll-runs", "POST", payload, false, config);
-  },
-  transitionPayrollRun(id: string, status: PayrollRunStatus, config?: PmsClientConfig) {
-    return request<PayrollRun>(`/payroll-runs/${id}/status`, "PATCH", { status }, false, config);
-  },
-  updatePayrollRunPeriod(id: string, periodStart: string, periodEnd: string, config?: PmsClientConfig) {
-    return request<PayrollRun>(`/payroll-runs/${id}/period`, "PATCH", { periodStart, periodEnd }, false, config);
-  },
-  getPayrollRunTransitions(id: string, config?: PmsClientConfig) {
-    return request<PayrollRunStatusTransition[]>(`/payroll-runs/${id}/transitions`, "GET", undefined, false, config);
-  },
   getSalary(employeeExternalId: string, config?: PmsClientConfig, asOf?: string) {
     const query = asOf ? `?asOf=${encodeURIComponent(asOf)}` : "";
     return request<SalaryRecord>(`/salaries/${employeeExternalId}${query}`, "GET", undefined, true, config);
@@ -170,8 +151,14 @@ export const pmsClient = {
   getPendingKeyApprovals(config?: PmsClientConfig) {
     return request<KeyApprovalResponse[]>("/key-approvals/pending", "GET", undefined, false, config);
   },
+  getApprovedKeyApprovals(config?: PmsClientConfig) {
+    return request<KeyApprovalResponse[]>("/key-approvals", "GET", undefined, false, config);
+  },
   approveKey(credentialId: string, config?: PmsClientConfig) {
     return request<KeyApprovalResponse>("/key-approvals", "POST", { credentialId }, false, config);
+  },
+  deleteKeyApproval(credentialId: string, config?: PmsClientConfig) {
+    return request<void>(`/key-approvals/${encodeURIComponent(credentialId)}`, "DELETE", undefined, false, config);
   },
   getAuditRecords(entity: string, entityId: string, config?: PmsClientConfig, page = 0) {
     return request<PagedResponse<AuditRecord>>(`/audit-records?entity=${encodeURIComponent(entity)}&entityId=${encodeURIComponent(entityId)}&page=${page}`, "GET", undefined, false, config);

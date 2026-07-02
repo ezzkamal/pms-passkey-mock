@@ -26,6 +26,8 @@ describe("webauthn helpers", () => {
 
     expect(creation.publicKey?.challenge).toBeInstanceOf(ArrayBuffer);
     expect(creation.publicKey?.user.id).toBeInstanceOf(ArrayBuffer);
+    expect(creation.publicKey?.timeout).toBe(300_000);
     expect(request.publicKey?.allowCredentials?.[0].id).toBeInstanceOf(ArrayBuffer);
+    expect(request.publicKey?.timeout).toBe(300_000);
   });
 });
