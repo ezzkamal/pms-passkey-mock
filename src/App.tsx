@@ -1,4 +1,4 @@
-import { History, KeyRound, Monitor, LockKeyhole, RefreshCw, ShieldCheck, Smartphone, Trash2, UserCheck } from "lucide-react";
+import { CalendarRange, ClipboardList, History, KeyRound, Monitor, LockKeyhole, RefreshCw, ShieldCheck, Smartphone, Trash2, UserCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   clearClientConfig,
@@ -10,6 +10,7 @@ import {
 } from "./api/pmsClient";
 import { authClient, fetchPmsAccessToken, signInWithKeycloak, signOutOfBetterAuth, type BetterAuthSession } from "./api/authClient";
 import { createPasskeyCredential, getPasskeyCredential } from "./api/webauthn";
+import { AddOnsView, PayrollRunsView } from "./payrollViews";
 import type {
   ApprovalState,
   AuditRecord,
@@ -25,12 +26,14 @@ const sectionLabels: Record<Section, string> = {
   passkeys: "Passkeys",
   approvals: "Key Approvals",
   salaries: "Salaries",
+  payrollRuns: "Payroll Runs",
+  addons: "Add-ons",
   audit: "Audit",
 };
 
+const LAST_SALARY_EMPLOYEE_STORAGE_KEY = "pms-mock-salary-employee-external-id";
 const SALARY_AUDIT_ENTITY = "salary";
 const DENIED_SALARY_ENTITY_ID = "00000000-0000-0000-0000-000000000000";
-const LAST_SALARY_EMPLOYEE_STORAGE_KEY = "pms-mock-salary-employee-external-id";
 
 type FlowState = {
   registered: boolean | null;
@@ -167,7 +170,7 @@ function App() {
           <div className="mark">IM</div>
           <div>
             <div className="brand-name">iMedia24</div>
-            <div className="brand-sub">PMS salary-access simulation</div>
+            <div className="brand-sub">PMS payroll simulation</div>
           </div>
         </div>
 
@@ -177,6 +180,8 @@ function App() {
               {item === "passkeys" && <KeyRound size={17} />}
               {item === "approvals" && <UserCheck size={17} />}
               {item === "salaries" && <LockKeyhole size={17} />}
+              {item === "payrollRuns" && <CalendarRange size={17} />}
+              {item === "addons" && <ClipboardList size={17} />}
               {item === "audit" && <History size={17} />}
               {sectionLabels[item]}
             </button>
@@ -213,7 +218,9 @@ function App() {
                 <TokenRequiredPanel tokenPending={tokenPending} onRefreshToken={refreshAccessToken} onSignOut={clearAuth} />
               ) : (
                 <>
-                  <FlowStepper signedIn={signedIn} authed={authed} flow={flow} grantActive={grantActive} remainingMs={remainingMs} vaultUnlockedOnce={vaultUnlockedOnce} />
+                  {["passkeys", "approvals", "salaries"].includes(section) && (
+                    <FlowStepper signedIn={signedIn} authed={authed} flow={flow} grantActive={grantActive} remainingMs={remainingMs} vaultUnlockedOnce={vaultUnlockedOnce} />
+                  )}
                   {section === "passkeys" && (
                     <PasskeyWorkflow
                       config={config}
@@ -235,6 +242,25 @@ function App() {
                       remainingMs={remainingMs}
                       onToast={pushToast}
                       onUnlocked={() => setVaultUnlockedOnce(true)}
+                      onInspectAudit={inspectAudit}
+                      onGoToPasskeys={() => setSection("passkeys")}
+                    />
+                  )}
+                  {section === "payrollRuns" && (
+                    <PayrollRunsView
+                      config={config}
+                      grantActive={grantActive}
+                      onToast={pushToast}
+                      onGoToAddons={() => setSection("addons")}
+                      onGoToPasskeys={() => setSection("passkeys")}
+                    />
+                  )}
+                  {section === "addons" && (
+                    <AddOnsView
+                      config={config}
+                      grantActive={grantActive}
+                      remainingMs={remainingMs}
+                      onToast={pushToast}
                       onInspectAudit={inspectAudit}
                       onGoToPasskeys={() => setSection("passkeys")}
                     />
@@ -1046,8 +1072,8 @@ function AuditView({ config, target, onTarget }: { config: PmsClientConfig; targ
         <div>
           <h2>Audit trail</h2>
           <p>
-            Every salary creation, decryption and denied access lands here with its actor. Amounts are deliberately never exposed through this endpoint —
-            denied salary reads appear under the zero UUID.
+            Every salary creation, decryption, payroll entry mutation, and denied access lands here with its actor. Amounts are deliberately never exposed
+            through this endpoint — denied salary reads appear under the zero UUID.
           </p>
         </div>
       </div>
@@ -1110,6 +1136,7 @@ function AuditView({ config, target, onTarget }: { config: PmsClientConfig; targ
     </div>
   );
 }
+
 
 function StatusItem({ label, value, tone }: { label: string; value: string; tone: "ok" | "warn" | "bad" }) {
   return (

@@ -59,7 +59,7 @@ describe("PMS real API app", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Redirecting to Keycloak" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Salaries" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Payroll Runs" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Payroll Runs" })).toBeDisabled();
     await waitFor(() => expect(authState.signInWithKeycloak).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("button", { name: "Sign in with Keycloak" })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();

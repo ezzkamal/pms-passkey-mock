@@ -38,8 +38,9 @@ describe("pmsClient", () => {
     await expect(pmsClient.getPasskeyStatus({ ...config, authToken: "" })).rejects.toThrow("Better Auth Keycloak session is required");
   });
 
-  it("requires key-grant token for salary endpoints", async () => {
+  it("requires key-grant token for sensitive payroll endpoints", async () => {
     await expect(pmsClient.getSalary("emp-1", { ...config, keyGrantToken: "" })).rejects.toThrow("Passkey key-grant token is required");
+    await expect(pmsClient.listPayrollEntries("run-1", { ...config, keyGrantToken: "" })).rejects.toThrow("Passkey key-grant token is required");
   });
 
   it("supports point-in-time salary lookups via asOf", async () => {
@@ -112,6 +113,49 @@ describe("pmsClient", () => {
       expect.objectContaining({
         method: "DELETE",
         headers: expect.objectContaining({ Authorization: "Bearer admin-token" }),
+      }),
+    );
+  });
+
+  it("lists payroll runs and creates a run", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "run-1", year: 2026, month: 7, status: "DRAFT" }]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "run-2", year: 2026, month: 8, status: "DRAFT" }), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await pmsClient.listPayrollRuns(config);
+    await pmsClient.createPayrollRun({ year: 2026, month: 8, status: "DRAFT" }, config);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8086/api/payroll-runs",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer admin-token" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8086/api/payroll-runs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ year: 2026, month: 8, status: "DRAFT" }),
+      }),
+    );
+  });
+
+  it("loads payroll entries with the key grant header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, hasNext: false, hasPrevious: false }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await pmsClient.listPayrollEntries("run-1", config, 1, 10);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8086/api/payroll-runs/run-1/entries?page=1&size=10",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ "X-Key-Grant-Token": "grant-token" }),
       }),
     );
   });
