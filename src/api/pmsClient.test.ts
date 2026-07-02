@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildHeaders, pmsClient } from "./pmsClient";
+import { buildHeaders, getDefaultPmsApiBaseUrl, pmsClient } from "./pmsClient";
 
 const config = {
   baseUrl: "http://localhost:8086/api",
@@ -9,6 +9,20 @@ const config = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("getDefaultPmsApiBaseUrl", () => {
+  it("uses the configured PMS API base URL when provided", () => {
+    expect(getDefaultPmsApiBaseUrl("https://pms.example.test/api", "pms-passkey-mock.vercel.app")).toBe("https://pms.example.test/api");
+  });
+
+  it("uses the same-origin Vercel proxy on deployed hosts when the env var is empty", () => {
+    expect(getDefaultPmsApiBaseUrl("", "pms-passkey-mock.vercel.app")).toBe("/api/pms-api");
+  });
+
+  it("keeps the local PMS default on localhost", () => {
+    expect(getDefaultPmsApiBaseUrl("", "localhost")).toBe("http://localhost:8086/api");
+  });
 });
 
 describe("pmsClient", () => {

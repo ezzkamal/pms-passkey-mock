@@ -12,6 +12,8 @@ import type {
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
+
 export type PmsClientConfig = {
   baseUrl: string;
   authToken: string;
@@ -21,8 +23,21 @@ export type PmsClientConfig = {
 
 const STORAGE_KEY = "pms-mock-api-config";
 
+export function getDefaultPmsApiBaseUrl(configuredBaseUrl = import.meta.env.VITE_PMS_API_BASE_URL || "", currentHostname = typeof window === "undefined" ? "" : window.location.hostname) {
+  const trimmedBaseUrl = configuredBaseUrl.trim();
+  if (trimmedBaseUrl) {
+    return trimmedBaseUrl;
+  }
+
+  if (currentHostname && !LOCAL_HOSTS.has(currentHostname)) {
+    return "/api/pms-api";
+  }
+
+  return "http://localhost:8086/api";
+}
+
 export const defaultClientConfig: PmsClientConfig = {
-  baseUrl: import.meta.env.VITE_PMS_API_BASE_URL || "http://localhost:8086/api",
+  baseUrl: getDefaultPmsApiBaseUrl(),
   authToken: "",
   keyGrantToken: import.meta.env.VITE_PMS_KEY_GRANT_TOKEN || "",
   keyGrantExpiresAt: "",
