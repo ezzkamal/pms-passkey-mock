@@ -1,0 +1,47 @@
+name: Vercel Deploy
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  DEPLOY_ENV: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+  PROD_FLAG: ${{ github.ref == 'refs/heads/main' && '--prod' || '' }}
+
+jobs:
+  deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment="$DEPLOY_ENV"
+
+      - name: Build project
+        run: vercel build $PROD_FLAG
+
+      - name: Deploy project
+        run: vercel deploy --prebuilt $PROD_FLAG
