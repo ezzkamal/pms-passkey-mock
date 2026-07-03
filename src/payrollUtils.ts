@@ -13,6 +13,10 @@ export const PAYROLL_WORKFLOW_STEPS = [
 
 export const LAST_SELECTED_RUN_STORAGE_KEY = "pms-mock-selected-run-id";
 
+export function sortPayrollRunsOldToNew(runs: PayrollRun[]): PayrollRun[] {
+  return [...runs].sort((left, right) => (left.year !== right.year ? left.year - right.year : left.month - right.month));
+}
+
 export function formatRunLabel(run: PayrollRun): string {
   return `${MONTH_NAMES[run.month - 1]} ${run.year}`;
 }

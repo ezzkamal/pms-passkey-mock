@@ -13,6 +13,7 @@ import {
   loadLastSelectedRunId,
   runStatusLabel,
   saveLastSelectedRunId,
+  sortPayrollRunsOldToNew,
   statusTone,
   summarizePayrollEntries,
 } from "./payrollUtils";
@@ -50,6 +51,13 @@ function PayrollWorkflowBar({ activeStep }: { activeStep: number }) {
       })}
     </div>
   );
+}
+
+const LAST_SALARY_EMPLOYEE_STORAGE_KEY = "pms-mock-salary-employee-external-id";
+
+function loadLastSalaryEmployeeExternalId(): string {
+  if (typeof window === "undefined" || !window.localStorage) return "";
+  return window.localStorage.getItem(LAST_SALARY_EMPLOYEE_STORAGE_KEY) || "";
 }
 
 async function loadAllEntries(runId: string, config: PmsClientConfig): Promise<PayrollEntry[]> {
@@ -90,7 +98,7 @@ export function PayrollRunsView({
   const [createStatus, setCreateStatus] = useState<PayrollRunStatus>("DRAFT");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
-  const [bulkEmployeeIds, setBulkEmployeeIds] = useState("");
+  const [bulkEmployeeIds, setBulkEmployeeIds] = useState(loadLastSalaryEmployeeExternalId);
   const [loaded, setLoaded] = useState(false);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [busy, setBusy] = useState("");
@@ -105,14 +113,15 @@ export function PayrollRunsView({
   async function loadRuns() {
     setError("");
     try {
-      const nextRuns = await pmsClient.listPayrollRuns(config);
+      const nextRuns = sortPayrollRunsOldToNew(await pmsClient.listPayrollRuns(config));
       setRuns(nextRuns);
       setLoaded(true);
       if (!selectedRunId && nextRuns.length > 0) {
-        setSelectedRunId(nextRuns[0].id);
-        saveLastSelectedRunId(nextRuns[0].id);
+        const newestRunId = nextRuns[nextRuns.length - 1].id;
+        setSelectedRunId(newestRunId);
+        saveLastSelectedRunId(newestRunId);
       } else if (selectedRunId && !nextRuns.some((run) => run.id === selectedRunId)) {
-        const fallback = nextRuns[0]?.id || "";
+        const fallback = nextRuns[nextRuns.length - 1]?.id || "";
         setSelectedRunId(fallback);
         saveLastSelectedRunId(fallback);
       }
@@ -319,14 +328,14 @@ export function PayrollRunsView({
           ) : (
             <>
               <div className="period-nav">
-                <button className="period-btn" type="button" onClick={() => shiftRun(1)} disabled={selectedIndex >= runs.length - 1}>
+                <button className="period-btn" type="button" onClick={() => shiftRun(-1)} disabled={selectedIndex <= 0} aria-label="Previous period">
                   <ChevronLeft size={16} />
                 </button>
                 <div className="period-label">
                   <CalendarRange size={14} />
                   {formatRunLabel(selectedRun)}
                 </div>
-                <button className="period-btn" type="button" onClick={() => shiftRun(-1)} disabled={selectedIndex <= 0}>
+                <button className="period-btn" type="button" onClick={() => shiftRun(1)} disabled={selectedIndex >= runs.length - 1} aria-label="Next period">
                   <ChevronRight size={16} />
                 </button>
                 <span className={`stat-badge ${statusTone(selectedRun.status) === "ok" ? "badge-blue" : statusTone(selectedRun.status) === "warn" ? "badge-amber" : "badge-red"}`}>● {runStatusLabel(selectedRun.status)}</span>
@@ -401,7 +410,7 @@ export function PayrollRunsView({
 
                   <div className="inline-form">
                     <label className="wide">
-                      Bulk auto-pull employee IDs (optional — empty = all active EMS employees)
+                      Employee external IDs (comma-separated — leave empty to pull all active EMS employees)
                       <input value={bulkEmployeeIds} onChange={(event) => setBulkEmployeeIds(event.target.value)} placeholder="emp-001, emp-002" />
                     </label>
                     <button className="btn primary inline-action" type="button" onClick={() => void bulkCreateEntries()} disabled={Boolean(busy) || !grantActive || selectedRun.status === "LOCKED"}>
@@ -577,11 +586,11 @@ export function AddOnsView({
 
   async function loadRuns() {
     try {
-      const nextRuns = await pmsClient.listPayrollRuns(config);
+      const nextRuns = sortPayrollRunsOldToNew(await pmsClient.listPayrollRuns(config));
       setRuns(nextRuns);
       if (!runId && nextRuns.length > 0) {
-        setRunId(nextRuns[0].id);
-        saveLastSelectedRunId(nextRuns[0].id);
+        setRunId(nextRuns[nextRuns.length - 1].id);
+        saveLastSelectedRunId(nextRuns[nextRuns.length - 1].id);
       }
     } catch {
       setRuns([]);
