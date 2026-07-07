@@ -68,13 +68,17 @@ describe("PMS real API app", () => {
   it("gets the PMS token from Better Auth and checks passkey registration through the real endpoint", async () => {
     const user = userEvent.setup();
     authState.session = { user: { email: "admin@imedia24.test" }, session: { id: "session-1" } };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ registered: true }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify([{ credentialId: "credential-1", email: "admin@imedia24.test", approved: true }]), { status: 200 }),
-      );
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith("/passkeys")) {
+        return Promise.resolve(new Response(JSON.stringify({ registered: true }), { status: 200 }));
+      }
+      if (url.includes("/key-approvals?status=APPROVED")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([{ credentialId: "credential-1", email: "admin@imedia24.test", status: "APPROVED" }]), { status: 200 }),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
@@ -186,19 +190,24 @@ describe("PMS real API app", () => {
         credentialId: "credential-1",
         email: "holder@imedia24.test",
         userExternalId: "holder-001",
-        approved: true,
+        status: "APPROVED",
         approvedBy: "admin-001",
         approvedAt: "2026-07-02T00:00:00Z",
+        revokedAt: null,
         createdAt: "2026-07-02T00:00:00Z",
       },
     ];
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(approved), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
+    let revoked = false;
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") {
+        revoked = true;
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      if (url.includes("/key-approvals?status=APPROVED") && !revoked) {
+        return Promise.resolve(new Response(JSON.stringify(approved), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);

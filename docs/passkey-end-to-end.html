@@ -661,8 +661,8 @@
           <article class="stage">
             <span class="num">3</span>
             <h3>Approve</h3>
-            <p>A different admin approves the credential. Future key release checks this approval every time.</p>
-            <code class="route">POST /api/key-approvals</code>
+            <p>An admin holding a registered passkey approves (or rejects) the credential. Future key release checks this approval every time.</p>
+            <code class="route">POST /api/key-approvals/{credentialId}/approve</code>
           </article>
           <article class="stage">
             <span class="num">4</span>
@@ -782,34 +782,46 @@
         <div class="lane">
           <div class="lane-title">
             <h3>Approval</h3>
-            <p>Second-admin approval gates future salary key release.</p>
+            <p>Key-authority approval by a registered-passkey holder gates future salary key release.</p>
           </div>
           <div class="tree">
             <article class="node">
               <div class="node-main">
-                <div class="node-label">Pending</div>
+                <div class="node-label">List by status</div>
                 <div>
-                  <h4><code>GET /key-approvals/pending</code></h4>
-                  <p><code>KeyApprovalService.pending()</code> lists active passkey credentials that do not have an active, non-revoked approval row.</p>
+                  <h4><code>GET /key-approvals?status=PENDING</code></h4>
+                  <p>Registration verification writes a <code>KeyApproval</code> row with <code>status=PENDING</code> right away. <code>KeyApprovalService.listByStatus()</code> filters by <code>PENDING</code>, <code>APPROVED</code>, <code>REJECTED</code>, or <code>REVOKED</code> (default <code>APPROVED</code>).</p>
                 </div>
               </div>
-              <div class="meta"><span class="mini endpoint">GET</span><span class="mini db">PasskeyCredential</span></div>
+              <div class="meta"><span class="mini endpoint">GET</span><span class="mini db">KeyApproval</span></div>
             </article>
 
             <article class="node">
               <div class="node-main">
                 <div class="node-label">Approve</div>
                 <div>
-                  <h4><code>POST /key-approvals</code></h4>
-                  <p><code>KeyApprovalService.approve(jwt, credentialId)</code> refuses self-approval by comparing the approver's JWT identity to the credential owner.</p>
+                  <h4><code>POST /key-approvals/{credentialId}/approve</code></h4>
+                  <p><code>KeyApprovalService.approve(jwt, credentialId)</code> requires the approver to hold a registered passkey of their own.</p>
                   <ul>
-                    <li>Creates or reactivates <code>KeyApproval</code>.</li>
+                    <li>Moves the <code>PENDING</code> approval to <code>APPROVED</code>; idempotent when already approved.</li>
                     <li>Stores <code>approvedBy</code> as the approver external ID and <code>approvedAt</code>.</li>
+                    <li>Returns <code>409 Conflict</code> for a <code>REJECTED</code> or <code>REVOKED</code> credential — it must be registered again.</li>
                     <li>This approval is checked again during every key grant mint.</li>
                   </ul>
                 </div>
               </div>
-              <div class="meta"><span class="mini endpoint">POST</span><span class="mini db">KeyApproval</span><span class="mini guard">different admin</span></div>
+              <div class="meta"><span class="mini endpoint">POST</span><span class="mini db">KeyApproval</span><span class="mini guard">registered approver</span></div>
+            </article>
+
+            <article class="node">
+              <div class="node-main">
+                <div class="node-label">Reject</div>
+                <div>
+                  <h4><code>POST /key-approvals/{credentialId}/reject</code></h4>
+                  <p><code>KeyApprovalService.reject(jwt, credentialId)</code> stamps the approval <code>REJECTED</code> — a terminal state. The credential can never be approved afterwards; its owner registers a new passkey.</p>
+                </div>
+              </div>
+              <div class="meta"><span class="mini endpoint">POST</span><span class="mini db">KeyApproval.status=REJECTED</span><span class="mini guard">registered approver</span></div>
             </article>
 
             <article class="node">
@@ -817,10 +829,10 @@
                 <div class="node-label">Revoke or delete</div>
                 <div>
                   <h4><code>DELETE /key-approvals/{credentialId}</code></h4>
-                  <p>If an active approval exists, PMS marks it inactive and sets <code>revokedAt</code>. If no approval exists, PMS deactivates the pending credential itself.</p>
+                  <p>If the approval is <code>APPROVED</code>, PMS sets <code>status=REVOKED</code> and <code>revokedAt</code> — also terminal. Otherwise it deactivates the credential itself and revokes any approval row.</p>
                 </div>
               </div>
-              <div class="meta"><span class="mini endpoint">DELETE</span><span class="mini db">KeyApproval.active=false</span><span class="mini db">PasskeyCredential.active=false</span></div>
+              <div class="meta"><span class="mini endpoint">DELETE</span><span class="mini db">KeyApproval.status=REVOKED</span><span class="mini db">PasskeyCredential.active=false</span></div>
             </article>
           </div>
         </div>
@@ -1042,22 +1054,28 @@
               <td>Stores verified public credential and marks approval as pending.</td>
             </tr>
             <tr>
-              <td><code>GET /api/key-approvals/pending</code></td>
-              <td><code>KeyApprovalController.pending</code> -> <code>KeyApprovalService.pending</code></td>
-              <td><code>PasskeyCredential</code>, <code>KeyApproval</code></td>
-              <td>Lists active credentials with no active approval.</td>
+              <td><code>GET /api/key-approvals?status=...</code></td>
+              <td><code>KeyApprovalController.list</code> -> <code>KeyApprovalService.listByStatus</code></td>
+              <td><code>KeyApproval</code></td>
+              <td>Lists approvals by status (PENDING, APPROVED, REJECTED, REVOKED; default APPROVED).</td>
             </tr>
             <tr>
-              <td><code>POST /api/key-approvals</code></td>
+              <td><code>POST /api/key-approvals/{credentialId}/approve</code></td>
               <td><code>approve</code> -> <code>KeyApprovalService.approve</code></td>
               <td><code>KeyApproval</code></td>
-              <td>Approves a credential if approver is a different admin.</td>
+              <td>Approves a credential if the approver holds a registered passkey; 409 on rejected/revoked.</td>
+            </tr>
+            <tr>
+              <td><code>POST /api/key-approvals/{credentialId}/reject</code></td>
+              <td><code>reject</code> -> <code>KeyApprovalService.reject</code></td>
+              <td><code>KeyApproval</code></td>
+              <td>Rejects a credential permanently; the owner must register a new passkey.</td>
             </tr>
             <tr>
               <td><code>DELETE /api/key-approvals/{credentialId}</code></td>
               <td><code>revokeOrDelete</code> -> <code>KeyApprovalService.revokeOrDelete</code></td>
               <td><code>KeyApproval</code> or <code>PasskeyCredential</code></td>
-              <td>Revokes an approval or deletes a pending credential.</td>
+              <td>Revokes an approved key (terminal) or deactivates a pending credential.</td>
             </tr>
             <tr>
               <td><code>POST /api/passkeys/authentication/options</code></td>
@@ -1116,11 +1134,11 @@
           </article>
           <article class="card">
             <h3><code>key_approvals</code></h3>
-            <p>Dual-control approval by a different admin.</p>
+            <p>Key-authority sign-off by an admin who holds a registered passkey.</p>
             <ul>
-              <li>One row per credential ID.</li>
-              <li>Inactive or revoked approvals do not release keys.</li>
-              <li>Checked when minting every grant.</li>
+              <li>One row per credential ID with a <code>status</code> lifecycle: PENDING → APPROVED → REVOKED, or PENDING → REJECTED.</li>
+              <li>REJECTED and REVOKED are terminal; re-approval returns 409 Conflict.</li>
+              <li>Only APPROVED rows release keys; checked when minting every grant.</li>
             </ul>
           </article>
           <article class="card">

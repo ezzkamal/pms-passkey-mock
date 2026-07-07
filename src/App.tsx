@@ -299,7 +299,7 @@ function FlowStepper({
     { label: "Keycloak sign-in", done: signedIn },
     { label: "Access token", done: authed },
     { label: "Passkey registered", done: flow.registered === true },
-    { label: "Key approved", done: flow.approval === "approved", hint: flow.approval === "pending" ? "another admin" : undefined },
+    { label: "Key approved", done: flow.approval === "approved", hint: flow.approval === "pending" ? "key authority" : flow.approval === "rejected" || flow.approval === "revoked" ? "re-register needed" : undefined },
     { label: "Key grant", done: grantActive, hint: grantActive && remainingMs !== null ? formatCountdown(remainingMs) : undefined },
     { label: "Salary vault", done: grantActive && vaultUnlockedOnce },
   ];
@@ -431,19 +431,25 @@ function PasskeyWorkflow({
         onFlow({ registered: false, approval: "unknown" });
         return;
       }
-      // Registered — the pending-approvals list tells us whether the key authority has signed it off.
+      // Registered — the status-filtered approval lists tell us where the key stands with the key authority.
       let approval: ApprovalState = flow.approval;
       try {
-        const [pending, approved] = await Promise.all([pmsClient.getPendingKeyApprovals(config), pmsClient.getApprovedKeyApprovals(config)]);
-        const minePending = sessionEmail ? pending.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase()) : false;
-        const mineApproved = sessionEmail ? approved.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase()) : false;
-        approval = minePending ? "pending" : mineApproved ? "approved" : "unknown";
+        const [pending, approved, rejected, revoked] = await Promise.all([
+          pmsClient.listKeyApprovals("PENDING", config),
+          pmsClient.listKeyApprovals("APPROVED", config),
+          pmsClient.listKeyApprovals("REJECTED", config),
+          pmsClient.listKeyApprovals("REVOKED", config),
+        ]);
+        const mine = (entries: KeyApprovalResponse[]) => Boolean(sessionEmail) && entries.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase());
+        approval = mine(pending) ? "pending" : mine(approved) ? "approved" : mine(rejected) ? "rejected" : mine(revoked) ? "revoked" : "unknown";
         appendLog(
-          minePending
-            ? "Your passkey is still waiting for approval by another admin."
-            : mineApproved
+          approval === "pending"
+            ? "Your passkey is still waiting for approval by an admin with a registered passkey."
+            : approval === "approved"
               ? "Your passkey has been approved by the key authority."
-              : "No active approval was found for your passkey.",
+              : approval === "rejected" || approval === "revoked"
+                ? `Your passkey was ${approval}. It cannot be re-approved — register a new passkey.`
+                : "No approval record was found for your passkey.",
         );
       } catch {
         appendLog("Could not determine approval state from the approval lists.");
@@ -461,7 +467,7 @@ function PasskeyWorkflow({
       await pmsClient.finishPasskeyRegistration({ ceremonyId: options.ceremonyId, credentialJson }, config);
       onFlow({ registered: true, approval: "pending" });
       appendLog("PMS verified the attestation. The credential is now pending key-authority approval.");
-      onToast("Passkey registered. A different admin must approve it before it can release salary keys.");
+      onToast("Passkey registered. An admin with a registered passkey must approve it before it can release salary keys.");
     });
   }
 
@@ -489,6 +495,7 @@ function PasskeyWorkflow({
   }
 
   const approvalPending = flow.registered === true && flow.approval === "pending";
+  const approvalClosed = flow.registered === true && (flow.approval === "rejected" || flow.approval === "revoked");
 
   return (
     <div className="work-grid">
@@ -497,8 +504,8 @@ function PasskeyWorkflow({
           <div>
             <h2>Passkey</h2>
             <p>
-              Salary amounts are envelope-encrypted. Decrypting them requires a passkey with the PRF extension, a one-time approval by a second admin, and a
-              short-lived key grant released on each authentication.
+              Salary amounts are envelope-encrypted with a KMS-backed data key. Decrypting them requires a passkey with the PRF extension, a one-time approval
+              by an admin who holds a registered passkey, and a short-lived key grant released on each authentication.
             </p>
           </div>
         </div>
@@ -510,8 +517,18 @@ function PasskeyWorkflow({
           />
           <StatusItem
             label="Key approval"
-            value={flow.approval === "approved" ? "Approved" : flow.approval === "pending" ? "Pending second admin" : "Unknown"}
-            tone={flow.approval === "approved" ? "ok" : "warn"}
+            value={
+              flow.approval === "approved"
+                ? "Approved"
+                : flow.approval === "pending"
+                  ? "Pending key authority"
+                  : flow.approval === "rejected"
+                    ? "Rejected"
+                    : flow.approval === "revoked"
+                      ? "Revoked"
+                      : "Unknown"
+            }
+            tone={flow.approval === "approved" ? "ok" : flow.approval === "rejected" || flow.approval === "revoked" ? "bad" : "warn"}
           />
           <StatusItem
             label="Key grant"
@@ -539,7 +556,7 @@ function PasskeyWorkflow({
               This device
             </button>
           </div>
-          <button className="btn primary" type="button" onClick={() => void registerPasskey()} disabled={Boolean(busy) || flow.registered === true}>
+          <button className="btn primary" type="button" onClick={() => void registerPasskey()} disabled={Boolean(busy) || (flow.registered === true && !approvalClosed)}>
             <KeyRound size={16} />
             Register passkey
           </button>
@@ -554,11 +571,17 @@ function PasskeyWorkflow({
         </div>
         {approvalPending && (
           <div className="alert warn">
-            Dual control: PMS refuses to release salary keys for this passkey until a <strong>different</strong> admin approves it. Authenticating now will fail
-            with &quot;Key authority has not approved this passkey&quot;.
+            Dual control: PMS refuses to release salary keys for this passkey until an admin <strong>with a registered passkey</strong> approves it.
+            Authenticating now will fail with &quot;Key authority has not approved this passkey&quot;.
             <button className="link-button" type="button" onClick={onGoToApprovals}>
               Open Key Approvals
             </button>
+          </div>
+        )}
+        {approvalClosed && (
+          <div className="alert error">
+            This passkey&apos;s approval was {flow.approval}. PMS refuses to re-approve it (409 Conflict) — register a new passkey to start the approval flow
+            over.
           </div>
         )}
         {busy && <div className="alert info">{busy}...</div>}
@@ -605,6 +628,7 @@ function KeyApprovalsView({
 }) {
   const [pendingApprovals, setPendingApprovals] = useState<KeyApprovalResponse[]>([]);
   const [approvedApprovals, setApprovedApprovals] = useState<KeyApprovalResponse[]>([]);
+  const [closedApprovals, setClosedApprovals] = useState<KeyApprovalResponse[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busyCredentialId, setBusyCredentialId] = useState("");
   const [error, setError] = useState("");
@@ -612,14 +636,22 @@ function KeyApprovalsView({
   async function loadApprovals() {
     setError("");
     try {
-      const [approved, pending] = await Promise.all([pmsClient.getApprovedKeyApprovals(config), pmsClient.getPendingKeyApprovals(config)]);
+      const [approved, pending, rejected, revoked] = await Promise.all([
+        pmsClient.listKeyApprovals("APPROVED", config),
+        pmsClient.listKeyApprovals("PENDING", config),
+        pmsClient.listKeyApprovals("REJECTED", config),
+        pmsClient.listKeyApprovals("REVOKED", config),
+      ]);
       setApprovedApprovals(approved);
       setPendingApprovals(pending);
+      setClosedApprovals([...rejected, ...revoked]);
       setLoaded(true);
       if (flow.registered && sessionEmail) {
-        const minePending = pending.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase());
-        const mineApproved = approved.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase());
-        onFlow({ ...flow, approval: minePending ? "pending" : mineApproved ? "approved" : "unknown" });
+        const mine = (entries: KeyApprovalResponse[]) => entries.some((entry) => entry.email.toLowerCase() === sessionEmail.toLowerCase());
+        onFlow({
+          ...flow,
+          approval: mine(pending) ? "pending" : mine(approved) ? "approved" : mine(rejected) ? "rejected" : mine(revoked) ? "revoked" : "unknown",
+        });
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load key approvals.");
@@ -635,6 +667,20 @@ function KeyApprovalsView({
       await loadApprovals();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not approve key.");
+    } finally {
+      setBusyCredentialId("");
+    }
+  }
+
+  async function reject(credentialId: string) {
+    setBusyCredentialId(credentialId);
+    setError("");
+    try {
+      await pmsClient.rejectKey(credentialId, config);
+      onToast("Key rejected. The credential cannot be re-approved — its owner must register a new passkey.");
+      await loadApprovals();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not reject key.");
     } finally {
       setBusyCredentialId("");
     }
@@ -667,8 +713,8 @@ function KeyApprovalsView({
           <div>
             <h2>Key approvals</h2>
             <p>
-              Dual control over the salary key: a freshly registered passkey lands here, and PMS rejects approval by the credential&apos;s own user. One approval
-              by a different admin is enough.
+              Dual control over the salary key: a freshly registered passkey lands here as PENDING. Approving or rejecting it requires the acting admin to hold
+              a registered passkey of their own. One approval is enough.
             </p>
           </div>
           <button className="btn secondary" type="button" onClick={() => void loadApprovals()} disabled={Boolean(busyCredentialId)}>
@@ -703,10 +749,13 @@ function KeyApprovalsView({
                     <td>{approval.createdAt || "-"}</td>
                     <td>
                       <div className="row-actions">
-                        <button className="btn secondary compact" type="button" onClick={() => void approve(approval.credentialId)} disabled={busy} title={own ? "PMS will reject self-approval — sign in as another admin." : "Approve this key"}>
+                        <button className="btn secondary compact" type="button" onClick={() => void approve(approval.credentialId)} disabled={busy} title={own ? "Approving requires a registered passkey — you hold one, so approving your own key succeeds." : "Approve this key"}>
                           Approve
                         </button>
-                        <button className="btn danger compact" type="button" onClick={() => void removeApproval(approval.credentialId, "Pending passkey approval request deleted.")} disabled={busy}>
+                        <button className="btn danger compact" type="button" onClick={() => void reject(approval.credentialId)} disabled={busy} title="Rejecting is final: the credential cannot be re-approved, its owner must register a new passkey.">
+                          Reject
+                        </button>
+                        <button className="btn danger compact" type="button" onClick={() => void removeApproval(approval.credentialId, "Passkey credential deactivated and its approval request removed.")} disabled={busy}>
                           <Trash2 size={13} />
                           Delete
                         </button>
@@ -721,8 +770,9 @@ function KeyApprovalsView({
         </div>
         {ownPending && (
           <div className="alert info">
-            Your own key is in this list. Approving it from this session will fail with &quot;Key approval requires a different approver&quot; — that is the
-            simulation working as designed. Sign in as a second admin (e.g. in another browser profile) to approve it.
+            Your own key is in this list. PMS only checks that the approver holds a registered passkey — since registering gave you one, approving your own key
+            from this session will succeed. An admin without any registered passkey gets &quot;Key approval requires the approver to have a registered
+            passkey&quot;.
           </div>
         )}
       </div>
@@ -731,7 +781,10 @@ function KeyApprovalsView({
         <div className="section-head">
           <div>
             <h2>Approved keys</h2>
-            <p>Revoking an approval blocks future salary key grants for that passkey. The credential can be approved again later by another admin.</p>
+            <p>
+              Revoking an approval blocks future salary key grants for that passkey — permanently. A revoked credential cannot be re-approved (PMS answers 409
+              Conflict); its owner has to register a new passkey.
+            </p>
           </div>
         </div>
         <div className="table-wrap">
@@ -766,6 +819,42 @@ function KeyApprovalsView({
                 );
               })}
               {approvedApprovals.length === 0 && <EmptyTable colSpan={6} label={loaded ? "No approved passkeys." : "Loading approved keys..."} />}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="section-head">
+          <div>
+            <h2>Rejected &amp; revoked keys</h2>
+            <p>Terminal states: trying to approve any of these again returns 409 Conflict. The owner must register a fresh passkey to start over.</p>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Credential ID</th>
+                <th>Email</th>
+                <th>User</th>
+                <th>Status</th>
+                <th>Closed at</th>
+              </tr>
+            </thead>
+            <tbody>
+              {closedApprovals.map((approval) => (
+                <tr key={approval.credentialId}>
+                  <td className="mono">{approval.credentialId}</td>
+                  <td>{approval.email}</td>
+                  <td>{approval.userExternalId}</td>
+                  <td>
+                    <span className={approval.status === "REJECTED" ? "flag amber" : "flag red"}>{approval.status}</span>
+                  </td>
+                  <td>{approval.revokedAt || "-"}</td>
+                </tr>
+              ))}
+              {closedApprovals.length === 0 && <EmptyTable colSpan={5} label={loaded ? "No rejected or revoked passkeys." : "Loading..."} />}
             </tbody>
           </table>
         </div>

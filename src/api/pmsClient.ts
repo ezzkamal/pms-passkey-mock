@@ -4,6 +4,7 @@ import type {
   AuditRecord,
   EntryPagedResponse,
   KeyApprovalResponse,
+  KeyApprovalStatus,
   KeyGrantResponse,
   PagedResponse,
   PasskeyOptionsResponse,
@@ -171,14 +172,20 @@ export const pmsClient = {
   getSalaryHistory(employeeExternalId: string, config?: PmsClientConfig) {
     return request<SalaryRecord[]>(`/salaries/${employeeExternalId}/history`, "GET", undefined, true, config);
   },
+  listKeyApprovals(status: KeyApprovalStatus, config?: PmsClientConfig) {
+    return request<KeyApprovalResponse[]>(`/key-approvals?status=${status}`, "GET", undefined, false, config);
+  },
   getPendingKeyApprovals(config?: PmsClientConfig) {
-    return request<KeyApprovalResponse[]>("/key-approvals/pending", "GET", undefined, false, config);
+    return pmsClient.listKeyApprovals("PENDING", config);
   },
   getApprovedKeyApprovals(config?: PmsClientConfig) {
-    return request<KeyApprovalResponse[]>("/key-approvals", "GET", undefined, false, config);
+    return pmsClient.listKeyApprovals("APPROVED", config);
   },
   approveKey(credentialId: string, config?: PmsClientConfig) {
-    return request<KeyApprovalResponse>("/key-approvals", "POST", { credentialId }, false, config);
+    return request<KeyApprovalResponse>(`/key-approvals/${encodeURIComponent(credentialId)}/approve`, "POST", undefined, false, config);
+  },
+  rejectKey(credentialId: string, config?: PmsClientConfig) {
+    return request<KeyApprovalResponse>(`/key-approvals/${encodeURIComponent(credentialId)}/reject`, "POST", undefined, false, config);
   },
   deleteKeyApproval(credentialId: string, config?: PmsClientConfig) {
     return request<void>(`/key-approvals/${encodeURIComponent(credentialId)}`, "DELETE", undefined, false, config);

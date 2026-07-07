@@ -101,7 +101,7 @@ describe("pmsClient", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://localhost:8086/api/key-approvals",
+      "http://localhost:8086/api/key-approvals?status=APPROVED",
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({ Authorization: "Bearer admin-token" }),
@@ -112,6 +112,46 @@ describe("pmsClient", () => {
       "http://localhost:8086/api/key-approvals/credential-1",
       expect.objectContaining({
         method: "DELETE",
+        headers: expect.objectContaining({ Authorization: "Bearer admin-token" }),
+      }),
+    );
+  });
+
+  it("filters key approvals by status", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify([]), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await pmsClient.getPendingKeyApprovals(config);
+    await pmsClient.listKeyApprovals("REVOKED", config);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8086/api/key-approvals?status=PENDING", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8086/api/key-approvals?status=REVOKED", expect.objectContaining({ method: "GET" }));
+  });
+
+  it("approves and rejects key credentials through the dedicated endpoints", async () => {
+    const approval = { credentialId: "credential-1", status: "APPROVED" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(approval), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...approval, status: "REJECTED" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await pmsClient.approveKey("credential-1", config);
+    await pmsClient.rejectKey("credential-1", config);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8086/api/key-approvals/credential-1/approve",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer admin-token" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8086/api/key-approvals/credential-1/reject",
+      expect.objectContaining({
+        method: "POST",
         headers: expect.objectContaining({ Authorization: "Bearer admin-token" }),
       }),
     );

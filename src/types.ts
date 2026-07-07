@@ -95,13 +95,16 @@ export type KeyGrantResponse = {
   expiresAt: string;
 };
 
+export type KeyApprovalStatus = "PENDING" | "APPROVED" | "REJECTED" | "REVOKED";
+
 export type KeyApprovalResponse = {
   credentialId: string;
   userExternalId: string;
   email: string;
-  approved: boolean;
+  status: KeyApprovalStatus;
   approvedBy: string | null;
   approvedAt: string | null;
+  revokedAt: string | null;
   createdAt: string | null;
 };
 
@@ -136,4 +139,4 @@ export type EntryPagedResponse<T> = {
   hasPrevious: boolean;
 };
 
-export type ApprovalState = "unknown" | "pending" | "approved";
+export type ApprovalState = "unknown" | "pending" | "approved" | "rejected" | "revoked";
