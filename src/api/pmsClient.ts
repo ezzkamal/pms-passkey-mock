@@ -159,9 +159,6 @@ export const pmsClient = {
   finishPasskeyAuthentication(payload: { ceremonyId: string; credentialJson: string }, config?: PmsClientConfig) {
     return request<KeyGrantResponse>("/passkeys/authentication/verify", "POST", payload, false, config);
   },
-  revokeKeyGrant(token: string, config?: PmsClientConfig) {
-    return request<void>("/passkeys/authentication/revoke", "POST", { token }, false, config);
-  },
   getSalary(employeeExternalId: string, config?: PmsClientConfig, asOf?: string) {
     const query = asOf ? `?asOf=${encodeURIComponent(asOf)}` : "";
     return request<SalaryRecord>(`/salaries/${employeeExternalId}${query}`, "GET", undefined, true, config);

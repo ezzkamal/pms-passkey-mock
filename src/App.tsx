@@ -485,12 +485,11 @@ function PasskeyWorkflow({
     });
   }
 
-  async function revokeGrant() {
-    await run("Revoking key grant", async () => {
-      await pmsClient.revokeKeyGrant(config.keyGrantToken, config);
+  async function discardGrant() {
+    await run("Discarding key grant", async () => {
       onConfig({ ...config, keyGrantToken: "", keyGrantExpiresAt: "" });
-      appendLog("Key grant revoked server-side. Salary endpoints will reject the token immediately.");
-      onToast("Key grant revoked.");
+      appendLog("Key grant discarded locally. The server-side grant simply expires at its TTL.");
+      onToast("Key grant discarded.");
     });
   }
 
@@ -564,9 +563,9 @@ function PasskeyWorkflow({
             <LockKeyhole size={16} />
             Authenticate
           </button>
-          <button className="btn secondary" type="button" onClick={revokeGrant} disabled={Boolean(busy) || !config.keyGrantToken}>
+          <button className="btn secondary" type="button" onClick={discardGrant} disabled={Boolean(busy) || !config.keyGrantToken}>
             <Trash2 size={16} />
-            Revoke grant
+            Discard grant
           </button>
         </div>
         {approvalPending && (
