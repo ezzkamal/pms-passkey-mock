@@ -7,7 +7,9 @@ import { genericOAuth, keycloak } from "better-auth/plugins/generic-oauth";
 import { PostgresDialect } from "kysely";
 import pg from "pg";
 
-const authUrl = process.env.BETTER_AUTH_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+const productionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null;
+const deploymentUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
+const authUrl = process.env.BETTER_AUTH_URL || productionUrl || deploymentUrl || "http://localhost:3000";
 const defaultDbPath = process.env.VERCEL ? "/tmp/pms-mock-better-auth.sqlite" : ".data/better-auth.sqlite";
 const dbPath = resolve(process.cwd(), process.env.BETTER_AUTH_SQLITE_PATH || defaultDbPath);
 // Serverless functions don't share /tmp, so sqlite sessions vanish between the auth
@@ -22,7 +24,8 @@ const trustedOrigins = Array.from(
     [
       authUrl,
       process.env.VITE_APP_ORIGIN,
-      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+      productionUrl,
+      deploymentUrl,
       "http://localhost:3000",
       "http://127.0.0.1:3000",
     ].filter(Boolean) as string[],
